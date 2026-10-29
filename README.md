@@ -9,8 +9,8 @@ Open `index.html` in a browser.
 | Key | Action |
 | --- | --- |
 | Arrow keys / WASD | Steer |
-| B (or 🍺 button) | Drink a beer: speed boost, and you knock crabs out of the way |
-| J (or 🌿 button) | Smoke a joint: everything slows down (you a little, everyone else a lot) and your eyes go red |
+| B (or 🍺 button) | Drink a beer: you get faster and plow through crabs, but you're drunk. Your controls go reversed and random, and everyone else gets drunk too. |
+| J (or 🌿 button) | Smoke a joint: everything slows down (you a little, everyone else a lot), smoke fills the air, and your eyes go red and droopy |
 | Space / P | Pause |
 | C (or Camera button) | Switch between follow camera and overview |
 | Enter / tap | Start or restart |
@@ -20,9 +20,9 @@ Eat every pearl to clear the level. The big glowing pearls turn the stingrays bl
 
 ## Hazards
 
-- **Stingrays** hunt you like the original ghosts: red chases you directly, pink aims 4 tiles ahead, cyan flanks you, and orange chases until it gets close, then wanders off.
-- **Set waves** roll across the whole maze. A warning shows first. The wave shoves you south until you hit a wall, and the swell makes your speed surge and stall.
-- **Crabs** scuttle sideways around the maze. If one pinches you, you're stunned for a moment, so drink a beer to plow through them.
+- **Stingrays** (3 of them) hunt you like the original ghosts: red chases you directly, pink aims 4 tiles ahead, and cyan flanks you.
+- **Set waves** roll across the whole maze. A warning shows first. The wave shoves you south until you hit a wall, throws any crabs it hits out of the maze, and the swell makes your speed surge and stall.
+- **Crabs** scuttle sideways around the maze (1 at first, up to 4 later). If one pinches you, you're stunned for a moment, so drink a beer to plow through them.
 
 Beers and joints float into the maze as pickups. Grab them and save them for when you need them.
 
@@ -32,7 +32,7 @@ Each level you clear flies you to the next surf spot, each with its own sky, wat
 
 1. Malibu, California: golden hour
 2. Waikiki, Hawaii: midday
-3. Uluwatu, Bali: sunset
+3. Uluwatu, Bali: sunset, on a sandy beach with palm trees
 4. Nazaré, Portugal: the big one
 
-Your girlfriend surfs behind you the whole way.
+Your girlfriend surfs behind you the whole way, in heart-shaped sunglasses and gold hoops.

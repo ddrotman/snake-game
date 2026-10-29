@@ -19,6 +19,13 @@
   #sub { margin-top: 12px; font-size: clamp(15px, 2.3vw, 22px); max-width: 720px; line-height: 1.4; }
   #toast { position: fixed; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 16px; font-weight: 700; font-size: 16px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
   #haze { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.5s; background: radial-gradient(ellipse at center, rgba(120, 255, 140, 0) 35%, rgba(70, 150, 60, 0.32) 80%, rgba(40, 90, 40, 0.55)); }
+  #smoke { position: fixed; inset: -10%; pointer-events: none; opacity: 0; transition: opacity 2s; overflow: hidden; }
+  #smoke i { position: absolute; width: 70vmax; height: 45vmax; border-radius: 50%; background: radial-gradient(closest-side, rgba(228, 234, 226, 0.6), rgba(228, 234, 226, 0)); filter: blur(18px); animation: drift 18s ease-in-out infinite alternate; }
+  #smoke i:nth-child(1) { left: -15%; top: 5%; }
+  #smoke i:nth-child(2) { right: -20%; top: 35%; animation-duration: 23s; animation-delay: -6s; }
+  #smoke i:nth-child(3) { left: 15%; bottom: -20%; animation-duration: 27s; animation-delay: -12s; }
+  #smoke i:nth-child(4) { right: 10%; top: -20%; animation-duration: 31s; animation-delay: -3s; }
+  @keyframes drift { from { transform: translate(0, 0) scale(1) rotate(0deg); } to { transform: translate(14vw, -10vh) scale(1.35) rotate(25deg); } }
   #help { position: fixed; bottom: 12px; left: 16px; right: 16px; text-align: center; font-size: 12px; opacity: 0.8; pointer-events: none; text-shadow: 0 1px 6px #000; }
   #controls { position: fixed; left: 16px; right: 16px; bottom: 36px; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
   #controls .group { display: flex; gap: 8px; }
@@ -29,6 +36,7 @@
 </head>
 <body>
 <div id="haze"></div>
+<div id="smoke"><i></i><i></i><i></i><i></i></div>
 <div id="hud" class="glass">
   <span>Score<b id="score">0</b></span>
   <span>Best<b id="best">0</b></span>
@@ -45,7 +53,7 @@
   </div>
   <button id="view" class="glass">Camera: Follow</button>
 </div>
-<div id="help">Arrows / WASD move · B beer boost · J joint slow-mo · Space pause · C camera · Enter start · Swipe on mobile</div>
+<div id="help">Arrows / WASD move · B beer (gets you drunk) · J joint slow-mo · Space pause · C camera · Enter start · Swipe on mobile</div>
 
 <script>
   // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
@@ -125,7 +133,7 @@ const MAPS = {
 const DESTINATIONS = [
   {name: 'Malibu, California', map: 'A', elevation: 17, azimuth: 200, turbidity: 6, rayleigh: 1.6, water: 0x0a5f6e, sun: 0xffe0b5, exposure: 0.5, waveEvery: 16, waveHeight: 1.8},
   {name: 'Waikiki, Hawaii', map: 'B', elevation: 48, azimuth: 165, turbidity: 3, rayleigh: 1.1, water: 0x0b8790, sun: 0xfff4e2, exposure: 0.32, waveEvery: 13, waveHeight: 2.0},
-  {name: 'Uluwatu, Bali', map: 'A', elevation: 4, azimuth: 190, turbidity: 10, rayleigh: 3, water: 0x0a4152, sun: 0xffa060, exposure: 0.6, waveEvery: 11, waveHeight: 2.2},
+  {name: 'Uluwatu, Bali', map: 'A', elevation: 7, azimuth: 190, turbidity: 10, rayleigh: 3, water: 0x0a4152, sun: 0xffa060, exposure: 0.6, waveEvery: 11, waveHeight: 2.2, beach: true},
   {name: 'Nazaré, Portugal', map: 'B', elevation: 10, azimuth: 235, turbidity: 16, rayleigh: 0.9, water: 0x113c48, sun: 0xdfe4ff, exposure: 0.55, waveEvery: 8, waveHeight: 2.7},
 ];
 const W = 19, H = 21;
@@ -141,9 +149,8 @@ const RAYS = [
   {name: 'blinky', color: 0xff3b30, start: {x: 9, y: 7}, dir: LEFT, corner: {x: W - 2, y: -2}, release: 0},
   {name: 'pinky', color: 0xff8ce8, start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 2},
   {name: 'inky', color: 0x2ff3ff, start: {x: 8, y: 9}, dir: RIGHT, corner: {x: W - 1, y: H + 1}, release: 5},
-  {name: 'clyde', color: 0xffa538, start: {x: 10, y: 9}, dir: LEFT, corner: {x: 0, y: H + 1}, release: 8},
 ];
-const BEER_TIME = 300, JOINT_TIME = 420, RED_EYES_EXTRA = 240;
+const BEER_TIME = 420, JOINT_TIME = 420, RED_EYES_EXTRA = 240;
 
 let dots, dotsLeft, pac, queued, ghosts, crabs, items, popups, wave;
 let score = 0, lives = 3, level = 1, state = 'start', timer = 0, paused = false;
@@ -190,7 +197,7 @@ function resetPositions() {
   pac = {x: 9, y: 15, dir: NONE, face: LEFT, p: 0, surge: 0, stun: 0, crabSafe: 0};
   queued = LEFT;
   ghosts = RAYS.map(g => ({...g, x: g.start.x, y: g.start.y, p: 0, state: g.release ? 'house' : 'active', fright: false}));
-  crabs = Array.from({length: Math.min(6, 1 + level)}, () => {
+  crabs = Array.from({length: Math.min(4, 1 + Math.floor(level / 2))}, () => {
     const [x, y] = randomTile(6);
     return {x, y, dir: NONE, p: 0, flung: 0};
   });
@@ -222,7 +229,7 @@ function addScore(n) {
 function useItem(type) {
   if (state !== 'play' || paused || !inv[type]) return;
   inv[type]--;
-  if (type === 'beer') { beerTime = BEER_TIME; toast('🍺 Beer boost! Crabs can’t stop you'); }
+  if (type === 'beer') { beerTime = BEER_TIME; toast('🍺 Wasted! Controls are all over the place'); }
   else { jointTime = JOINT_TIME; redEyes = JOINT_TIME + RED_EYES_EXTRA; toast('🌿 Duuude… everything slows down'); }
 }
 
@@ -249,8 +256,8 @@ function reverse(e) {
 }
 
 function pacSpeed() {
-  let s = Math.min(0.16, 0.125 + 0.005 * (level - 1));
-  if (beerTime > 0) s *= 1.5;
+  let s = Math.min(0.13, 0.1 + 0.004 * (level - 1));
+  if (beerTime > 0) s *= 1.35;
   if (jointTime > 0) s *= 0.7;
   if (pac.surge > 0) s *= 1.6;
   return s * (1 + 0.12 * Math.sin(frame * 0.045 + pac.y * 0.7)); // the swell surges and stalls you
@@ -318,7 +325,7 @@ function chooseDir(g) {
   const doorOK = g.state === 'leaving' || g.state === 'eaten';
   const opts = DIRS.filter(d => !opposite(d, g.dir) && open(g.x, g.y, d, doorOK));
   if (!opts.length) return {x: -g.dir.x, y: -g.dir.y};
-  if (g.fright) return opts[Math.floor(Math.random() * opts.length)];
+  if (g.fright || (beerTime > 0 && Math.random() < 0.5)) return opts[Math.floor(Math.random() * opts.length)];
   const t = target(g);
   let pick = opts[0], pickDist = Infinity;
   for (const d of opts) {
@@ -340,10 +347,10 @@ function ghostArrive(g) {
 
 function ghostSpeed(g) {
   let s;
-  if (g.state === 'eaten') s = 0.25;
-  else if (g.state === 'leaving') s = 0.08;
-  else if (g.fright || (g.y === 9 && (g.x <= 4 || g.x >= 14))) s = 0.06;
-  else s = Math.min(0.155, 0.115 + 0.006 * (level - 1));
+  if (g.state === 'eaten') s = 0.22;
+  else if (g.state === 'leaving') s = 0.07;
+  else if (g.fright || (g.y === 9 && (g.x <= 4 || g.x >= 14))) s = 0.05;
+  else s = Math.min(0.125, 0.09 + 0.005 * (level - 1));
   return s * timeScale();
 }
 
@@ -364,13 +371,14 @@ function updateCrab(c) {
   if (c.flung > 0) {
     if (--c.flung === 0) {
       [c.x, c.y] = randomTile(6);
+      c.thrown = false;
       c.dir = NONE;
       c.p = 0;
     }
     return;
   }
   if (!c.dir.x && !c.dir.y) crabArrive(c);
-  advance(c, 0.035 * timeScale(), crabArrive);
+  advance(c, 0.03 * timeScale(), crabArrive);
 }
 
 function checkCollisions() {
@@ -403,6 +411,7 @@ function checkCrabs() {
     if ((pp.x - cp.x) ** 2 + (pp.y - cp.y) ** 2 > 0.45) continue;
     if (beerTime > 0) {
       c.flung = 80;
+      c.thrown = false;
       addScore(100);
       popups.push({x: cp.x, y: cp.y, text: 'YEET +100', t: 60});
     } else if (pac.crabSafe === 0) {
@@ -443,6 +452,10 @@ function updateWaves(ts) {
   wave.row += 0.11 * ts;
   const py = rpos(pac).y;
   if (prev < py && wave.row >= py) pac.surge = 34;
+  for (const c of crabs) {
+    const cy = rpos(c).y;
+    if (!c.flung && prev < cy && wave.row >= cy) { c.flung = 80; c.thrown = true; }
+  }
   if (wave.row > H + 5) wave = null;
 }
 
@@ -481,6 +494,7 @@ function step() {
     ghosts.forEach(g => { if (g.state === 'active') reverse(g); });
   }
 
+  if (beerTime > 0 && Math.random() < 0.012) queued = DIRS[Math.floor(Math.random() * 4)]; // drunk swerve
   updateWaves(ts);
   updatePac();
   if (state !== 'play') return;
@@ -727,7 +741,135 @@ function applyDestination() {
   sunLight.color.set(d.sun);
   renderer.toneMappingExposure = d.exposure;
   waveMesh.scale.y = d.waveHeight;
+  if (d.beach && !beach) beach = buildBeach();
+  if (beach) beach.visible = !!d.beach;
   buildMaze();
+}
+
+// ---------------------------------------------------------------- sunset beach with palm trees
+const MAZE_HX = W * S / 2 + 0.5, MAZE_HZ = H * S / 2 + 0.5;
+let beach = null;
+const palmCrowns = [];
+
+function makeSandHeight() {
+  const dunes = valueNoise(10), ripples = valueNoise(40);
+  return (x, z) => {
+    if (Math.abs(x) < MAZE_HX && Math.abs(z) < MAZE_HZ) return -1;
+    const d = Math.hypot(Math.max(Math.abs(x) - MAZE_HX, 0), Math.max(Math.abs(z) - MAZE_HZ, 0));
+    const u = (x + 100) / 200, v = (z + 100) / 200;
+    let h = -0.7 + Math.min(d, 7) / 7 * 1.5 + THREE.MathUtils.smoothstep(d, 5, 10) * (dunes(u, v) * 0.9 + ripples(u, v) * 0.15);
+    h -= Math.max(0, d - 15) * 0.3;
+    // Keep a channel open so the tunnel still leads out to sea.
+    const ch = Math.abs(z - wz(9));
+    if (Math.abs(x) > MAZE_HX && ch < 3) h = Math.min(h, -0.7 + THREE.MathUtils.smoothstep(ch, 1.4, 3) * (h + 0.7));
+    return h;
+  };
+}
+
+function makeGrainTexture(base, spread, w, h, stripes) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d'), img = g.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const band = stripes ? (x % stripes < 3 ? -40 : 0) : 0;
+      const v = base + (Math.random() - 0.5) * spread + band, i = (y * w + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+const barkMat = new THREE.MeshStandardMaterial({color: 0xb08a66, roughness: 0.95, map: makeGrainTexture(200, 70, 256, 32, 16)});
+barkMat.map.repeat.set(3, 1);
+const frondMats = [0x3d7a2a, 0x4a8a30, 0x356b24].map(c => new THREE.MeshStandardMaterial({color: c, roughness: 0.75, side: THREE.DoubleSide}));
+const coconutMat = new THREE.MeshStandardMaterial({color: 0x5a3b1c, roughness: 0.7});
+const frondGeo = (() => {
+  const L = 2.8, geo = new THREE.PlaneGeometry(L, 0.8, 16, 4).translate(L / 2, 0, 0).rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getX(i) / L, z = pos.getZ(i) * Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.05)), 0.7);
+    pos.setZ(i, z);
+    pos.setY(i, 0.6 * t - 1.5 * t * t - Math.abs(z) * 0.5); // arch up, droop, fold along the midrib
+  }
+  geo.computeVertexNormals();
+  return geo;
+})();
+
+function makePalm(height, lean) {
+  const g = new THREE.Group();
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(lean * 0.15, height * 0.35, 0),
+    new THREE.Vector3(lean * 0.55, height * 0.7, 0), new THREE.Vector3(lean, height, 0)]);
+  const TS = 20, RS = 10, tube = new THREE.TubeGeometry(curve, TS, 0.2, RS);
+  const pos = tube.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i <= TS; i++) {
+    const c = curve.getPointAt(i / TS), k = 1 - 0.45 * i / TS; // taper toward the crown
+    for (let j = 0; j <= RS; j++) {
+      v.fromBufferAttribute(pos, i * (RS + 1) + j).sub(c).multiplyScalar(k).add(c);
+      pos.setXYZ(i * (RS + 1) + j, v.x, v.y, v.z);
+    }
+  }
+  tube.computeVertexNormals();
+  g.add(new THREE.Mesh(tube, barkMat));
+  const crown = new THREE.Group();
+  crown.position.copy(curve.getPointAt(1));
+  crown.scale.setScalar(0.9 + height * 0.08);
+  const n = 9;
+  for (let k = 0; k < n; k++) {
+    const frond = new THREE.Mesh(frondGeo, frondMats[k % 3]);
+    frond.rotation.set(0, k * Math.PI * 2 / n + Math.random() * 0.3, 0.2 + Math.random() * 0.4);
+    crown.add(frond);
+  }
+  for (let k = 0; k < 3; k++) {
+    const nut = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), coconutMat);
+    nut.position.set(Math.cos(k * 2.1) * 0.18, -0.2, Math.sin(k * 2.1) * 0.18);
+    crown.add(nut);
+  }
+  crown.userData.phase = Math.random() * 10;
+  palmCrowns.push(crown);
+  g.add(crown);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+function buildBeach() {
+  const group = new THREE.Group(), height = makeSandHeight();
+  const geo = new THREE.PlaneGeometry(120, 120, 240, 240).rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position, colors = new Float32Array(pos.count * 3);
+  const wet = new THREE.Color(0x9a6c45), dry = new THREE.Color(0xf6c98e), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const h = height(pos.getX(i), pos.getZ(i));
+    pos.setY(i, h);
+    c.lerpColors(wet, dry, THREE.MathUtils.smoothstep(h, 0.02, 0.45));
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const sandMap = makeGrainTexture(225, 50, 256, 256);
+  sandMap.repeat.set(40, 40);
+  const sand = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({vertexColors: true, map: sandMap, roughness: 1}));
+  sand.receiveShadow = true;
+  group.add(sand);
+
+  const spots = [];
+  for (let tries = 0; spots.length < 22 && tries < 3000; tries++) {
+    const x = (Math.random() - 0.5) * 84, z = (Math.random() - 0.5) * 88, h = height(x, z);
+    if (h < 0.45 || spots.some(([sx, sz]) => (sx - x) ** 2 + (sz - z) ** 2 < 16)) continue;
+    spots.push([x, z]);
+    const palm = makePalm(4 + Math.random() * 3.5, 0.6 + Math.random() * 1.6);
+    palm.position.set(x, h - 0.05, z);
+    palm.rotation.y = Math.atan2(z, -x) + (Math.random() - 0.5) * 1.2; // lean out toward the water
+    group.add(palm);
+  }
+  scene.add(group);
+  return group;
 }
 
 // ---------------------------------------------------------------- set waves
@@ -750,6 +892,25 @@ scene.add(waveMesh);
 const waveH = z => wave ? waveProfile(z - wz(wave.row)) * waveMesh.scale.y : 0;
 
 // ---------------------------------------------------------------- surfers: Pac-Man & his girlfriend
+// Hearts that float up from his girlfriend.
+const heartShape = new THREE.Shape();
+heartShape.moveTo(5, 5);
+heartShape.bezierCurveTo(5, 5, 4, 0, 0, 0);
+heartShape.bezierCurveTo(-6, 0, -6, 7, -6, 7);
+heartShape.bezierCurveTo(-6, 11, -3, 15.4, 5, 19);
+heartShape.bezierCurveTo(12, 15.4, 16, 11, 16, 7);
+heartShape.bezierCurveTo(16, 7, 16, 0, 10, 0);
+heartShape.bezierCurveTo(7, 0, 5, 5, 5, 5);
+const heartGeo = new THREE.ExtrudeGeometry(heartShape, {depth: 3, bevelEnabled: true, bevelSize: 1.2, bevelThickness: 1.2, bevelSegments: 3}).center().rotateZ(Math.PI).scale(0.018, 0.018, 0.018);
+const heartMat = new THREE.MeshStandardMaterial({color: 0xff4d8d, emissive: 0xff2a6a, emissiveIntensity: 1.6, roughness: 0.3});
+const hearts = Array.from({length: 10}, () => {
+  const h = new THREE.Mesh(heartGeo, heartMat);
+  h.visible = false;
+  h.userData.life = 0;
+  scene.add(h);
+  return h;
+});
+
 function makeSurfer({color, board, stripe, girl}) {
   const group = new THREE.Group(), rider = new THREE.Group(), body = new THREE.Group();
   group.add(rider);
@@ -763,7 +924,9 @@ function makeSurfer({color, board, stripe, girl}) {
   rider.add(deck, stripeMesh, fin);
 
   const R = girl ? 0.58 : 0.64;
-  const mat = new THREE.MeshPhysicalMaterial({color, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2});
+  const mat = girl
+    ? new THREE.MeshPhysicalMaterial({color, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08, sheen: 0.6, sheenColor: new THREE.Color(0xffb0c8)})
+    : new THREE.MeshPhysicalMaterial({color, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2});
   const mouthMat = new THREE.MeshStandardMaterial({color: 0x4a0a10, roughness: 0.7});
   const upper = new THREE.Group(), lower = new THREE.Group();
   upper.add(new THREE.Mesh(new THREE.SphereGeometry(R, 56, 28, 0, Math.PI * 2, 0, Math.PI / 2), mat));
@@ -776,12 +939,34 @@ function makeSurfer({color, board, stripe, girl}) {
   upper.add(upperCap);
   lower.add(lowerCap);
 
-  const eyeMat = new THREE.MeshPhysicalMaterial({color: 0x111111, roughness: 0.1, clearcoat: 1});
-  const eyes = [];
+  const eyeMat = new THREE.MeshPhysicalMaterial({color: 0xffffff, roughness: 0.12, clearcoat: 1});
+  const pupilMat = new THREE.MeshPhysicalMaterial({color: girl ? 0x1b78e0 : 0x111111, roughness: 0.1, clearcoat: 1});
+  const darkMat = new THREE.MeshPhysicalMaterial({color: 0x111111, roughness: 0.1, clearcoat: 1});
+  const eyes = [], lids = [];
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 20, 14), eyeMat);
-    eye.position.set(sx * 0.21, 0.36, 0.34).normalize().multiplyScalar(R * 0.97);
+    const eye = new THREE.Group();
+    eye.position.set(sx * 0.34, 0.72, 0.52).normalize().multiplyScalar(R * 0.86);
+    eye.rotation.x = -0.6; // tilt the eyes up toward the camera
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16), eyeMat);
+    white.scale.set(1, 1.15, 0.8);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(girl ? 0.11 : 0.1, 18, 12), pupilMat);
+    pupil.position.set(-sx * 0.015, -0.01, 0.135);
+    eye.add(white, pupil);
+    if (girl) {
+      const center = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), darkMat);
+      center.position.set(-sx * 0.015, -0.01, 0.2);
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), eyeMat);
+      glint.position.set(-sx * 0.045, 0.035, 0.23);
+      eye.add(center, glint);
+    }
+    // Heavy lids that droop over the eyes when he's high.
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.215, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+    lid.scale.copy(white.scale);
+    lid.rotation.x = -0.2;
+    lid.visible = false;
+    eye.add(lid);
     eyes.push(eye);
+    lids.push(lid);
     upper.add(eye);
   }
 
@@ -798,23 +983,54 @@ function makeSurfer({color, board, stripe, girl}) {
     bow.position.set(-0.22, R * 0.9, 0.1);
     bow.rotation.set(0.3, 0.4, 0.35);
     upper.add(bow);
-    for (const [grp, y] of [[upper, -0.03], [lower, 0.03]]) {
-      const lip = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), red);
-      lip.scale.set(0.17, 0.045, 0.06);
-      lip.position.set(0, y, R * 0.97);
+    // Full, glossy lips.
+    const lipMat = new THREE.MeshPhysicalMaterial({color: 0xd4002a, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.02});
+    for (const [grp, y, k] of [[upper, -0.035, 1], [lower, 0.035, 1.15]]) {
+      const lip = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 14), lipMat);
+      lip.scale.set(0.24 * k, 0.075 * k, 0.09);
+      lip.position.set(0, y, R * 0.95);
       grp.add(lip);
     }
-    const mole = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), eyeMat);
-    mole.position.set(0.42, 0.18, 0.62).normalize().multiplyScalar(R * 0.99);
+    const blushMat = new THREE.MeshStandardMaterial({color: 0xff6f9f, transparent: true, opacity: 0.55, roughness: 0.6});
+    for (const sx of [-1, 1]) {
+      const blush = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 10), blushMat);
+      blush.scale.set(1, 0.6, 0.25);
+      blush.position.set(sx * 0.62, 0.12, 0.62).normalize().multiplyScalar(R * 0.985);
+      blush.lookAt(0, 0, 0);
+      upper.add(blush);
+    }
+    const mole = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), darkMat);
+    mole.position.set(0.5, 0.1, 0.62).normalize().multiplyScalar(R * 0.99);
     upper.add(mole);
+    // Long, curled lashes.
     for (const eye of eyes) {
-      for (const a of [-0.5, 0, 0.5]) {
-        const lash = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.09, 0.015), eyeMat);
-        lash.position.copy(eye.position).add(new THREE.Vector3(a * 0.08, 0.09, 0));
-        lash.rotation.z = -a * 0.8;
+      for (const a of [-0.7, -0.25, 0.25, 0.7]) {
+        const lash = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.17, 0.022), darkMat);
+        lash.position.copy(eye.position).add(new THREE.Vector3(a * 0.16, 0.12, -0.14));
+        lash.rotation.set(-0.5, 0, -a * 0.9);
         upper.add(lash);
       }
     }
+    // Pink heart sunglasses pushed up on her head.
+    const lensMat = new THREE.MeshPhysicalMaterial({color: 0xff2d7a, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.8});
+    const goldMat = new THREE.MeshStandardMaterial({color: 0xe8c15a, metalness: 1, roughness: 0.25});
+    const shades = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(heartGeo, lensMat);
+      lens.scale.setScalar(0.75);
+      lens.position.x = sx * 0.2;
+      shades.add(lens);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.025, 0.025), goldMat);
+    bridge.position.y = 0.06;
+    shades.add(bridge);
+    shades.position.set(0.05, R * 0.78, -0.3);
+    shades.rotation.x = -1.35;
+    upper.add(shades);
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.014, 10, 32), goldMat);
+    hoop.position.set(R * 0.97, -0.12, 0.05);
+    hoop.rotation.y = Math.PI / 2;
+    upper.add(hoop);
   }
 
   body.add(upper, lower);
@@ -822,7 +1038,7 @@ function makeSurfer({color, board, stripe, girl}) {
   rider.add(body);
   group.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(group);
-  return {group, rider, upper, lower, eyes, eyeMat, R, heading: Math.PI * 1.5, lean: 0};
+  return {group, rider, upper, lower, eyes, eyeMat, lids, R, heading: Math.PI * 1.5, lean: 0};
 }
 
 const pacV = makeSurfer({color: 0xffb300, board: 0xf6f3ea, stripe: 0x0aa5c8});
@@ -845,25 +1061,6 @@ const mouthJoint = makeJoint();
 mouthJoint.position.set(0.24, -0.01, pacV.R * 0.95);
 mouthJoint.rotation.y = 0.5;
 pacV.lower.add(mouthJoint);
-
-// Hearts that float up from his girlfriend.
-const heartShape = new THREE.Shape();
-heartShape.moveTo(5, 5);
-heartShape.bezierCurveTo(5, 5, 4, 0, 0, 0);
-heartShape.bezierCurveTo(-6, 0, -6, 7, -6, 7);
-heartShape.bezierCurveTo(-6, 11, -3, 15.4, 5, 19);
-heartShape.bezierCurveTo(12, 15.4, 16, 11, 16, 7);
-heartShape.bezierCurveTo(16, 7, 16, 0, 10, 0);
-heartShape.bezierCurveTo(7, 0, 5, 5, 5, 5);
-const heartGeo = new THREE.ExtrudeGeometry(heartShape, {depth: 3, bevelEnabled: true, bevelSize: 1.2, bevelThickness: 1.2, bevelSegments: 3}).center().rotateZ(Math.PI).scale(0.018, 0.018, 0.018);
-const heartMat = new THREE.MeshStandardMaterial({color: 0xff4d8d, emissive: 0xff2a6a, emissiveIntensity: 1.6, roughness: 0.3});
-const hearts = Array.from({length: 10}, () => {
-  const h = new THREE.Mesh(heartGeo, heartMat);
-  h.visible = false;
-  h.userData.life = 0;
-  scene.add(h);
-  return h;
-});
 
 // ---------------------------------------------------------------- stingrays
 const RNU = 22, RNV = 14, RAY_LEN = 0.8, RAY_SPAN = 1.0;
@@ -1046,16 +1243,27 @@ function makeItem(type) {
 const itemViews = new Map();
 
 // ---------------------------------------------------------------- particles: foam/bubbles and smoke
-function makePool(max, material) {
-  const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), material, max);
+function makePool(max, material, billboard) {
+  const mesh = new THREE.InstancedMesh(billboard ? new THREE.PlaneGeometry(2, 2) : new THREE.IcosahedronGeometry(1, 1), material, max);
   mesh.frustumCulled = false;
   const c = new THREE.Color(1, 1, 1);
   for (let i = 0; i < max; i++) mesh.setColorAt(i, c);
   scene.add(mesh);
-  return {mesh, max, list: []};
+  return {mesh, max, list: [], billboard};
 }
+const softPuff = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
 const foam = makePool(900, new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.4, emissive: 0x8fb6c8, emissiveIntensity: 0.3}));
-const smoke = makePool(220, new THREE.MeshStandardMaterial({color: 0xd5dcd2, roughness: 1, transparent: true, opacity: 0.26, depthWrite: false}));
+const smoke = makePool(600, new THREE.MeshBasicMaterial({color: 0xdfe6dc, map: softPuff, transparent: true, opacity: 0.32, depthWrite: false}), true);
 const WHITE = new THREE.Color(0xffffff), GOLD = new THREE.Color(0xffc93a);
 function spawn(pool, p, v, size, life, {color = WHITE, gravity = 0.008, grow = 0} = {}) {
   if (pool.list.length >= pool.max) pool.list.shift();
@@ -1077,7 +1285,7 @@ function updatePool(pool) {
     if (!q) { pool.mesh.setMatrixAt(i, m.compose(hide, q0, s.setScalar(0))); continue; }
     const age = 1 - q.life / q.max;
     const k = q.size * (q.grow ? 1 + age * q.grow : Math.sqrt(1 - age) * (0.6 + age));
-    pool.mesh.setMatrixAt(i, m.compose(q.p, q0, s.set(k, k * 0.75, k)));
+    pool.mesh.setMatrixAt(i, m.compose(q.p, pool.billboard ? camera.quaternion : q0, pool.billboard ? s.setScalar(k) : s.set(k, k * 0.75, k)));
     pool.mesh.setColorAt(i, q.color);
   }
   pool.mesh.instanceMatrix.needsUpdate = true;
@@ -1175,17 +1383,35 @@ function updatePacView(dt) {
   }
   rideSurfer(pacV, headingOf(pac.face), moving, dt, 18 * (jointTime > 0 ? 0.6 : 1));
   if (pac.stun > 0) pacV.rider.rotation.z += Math.sin(frame * 0.9) * 0.35;
+  if (beerTime > 0) pacV.rider.rotation.z += Math.sin(time * 3) * 0.25;
 
-  // Red, squinty eyes after the joint.
+  // Bloodshot, droopy eyes after the joint.
   const high = redEyes > 0;
-  pacV.eyeMat.color.set(high ? 0xd01818 : 0x111111);
-  pacV.eyeMat.emissive.set(high ? 0x700000 : 0x000000);
-  pacV.eyes.forEach(e => e.scale.set(high ? 1.25 : 1, high ? 0.55 : 1, 1));
+  pacV.eyeMat.color.set(high ? 0xff3030 : 0xffffff);
+  pacV.eyeMat.emissive.set(high ? 0x9a0000 : 0x000000);
+  pacV.lids.forEach(l => { l.visible = high; });
 
   mouthJoint.visible = jointTime > 0;
-  if (jointTime > 0 && frame % 3 === 0) {
+  if (jointTime > 0) {
     const tip = mouthJoint.userData.ember.getWorldPosition(new THREE.Vector3());
-    spawn(smoke, tip, new THREE.Vector3((Math.random() - 0.5) * 0.01, 0.02 + Math.random() * 0.01, (Math.random() - 0.5) * 0.01), 0.07, 110, {gravity: -0.0002, grow: 5});
+    if (frame % 3 === 0) {
+      spawn(smoke, tip, new THREE.Vector3((Math.random() - 0.5) * 0.01, 0.02 + Math.random() * 0.01, (Math.random() - 0.5) * 0.01), 0.08, 120, {gravity: -0.0002, grow: 6});
+    }
+    if (frame % 50 === 0) {
+      // A big exhale out the front of his mouth.
+      const fwd = new THREE.Vector3(Math.sin(pacV.heading), 0, Math.cos(pacV.heading));
+      const mouth = pacV.group.position.clone().add(new THREE.Vector3(0, 0.75, 0)).addScaledVector(fwd, 0.6);
+      for (let i = 0; i < 14; i++) {
+        const v = fwd.clone().multiplyScalar(0.03 + Math.random() * 0.03).add(new THREE.Vector3((Math.random() - 0.5) * 0.03, 0.01 + Math.random() * 0.02, (Math.random() - 0.5) * 0.03));
+        spawn(smoke, mouth.clone(), v, 0.15, 160, {gravity: -0.0002, grow: 8});
+      }
+    }
+    if (frame % 4 === 0) {
+      // A haze that hangs around him.
+      const a = Math.random() * Math.PI * 2, r = 1 + Math.random() * 2.5;
+      const p = pacV.group.position.clone().add(new THREE.Vector3(Math.cos(a) * r, 0.3 + Math.random() * 0.6, Math.sin(a) * r));
+      spawn(smoke, p, new THREE.Vector3((Math.random() - 0.5) * 0.006, 0.004, (Math.random() - 0.5) * 0.006), 0.35, 200, {gravity: -0.00005, grow: 4});
+    }
   }
   if (beerTime > 0 && frame % 2 === 0) {
     const p = pacV.group.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8));
@@ -1217,8 +1443,12 @@ function updateGirlfriend(dt) {
   gfV.group.position.set(p.x, waveH(p.z), p.z);
   const heading = next.distanceTo(p) > 0.01 ? Math.atan2(next.x - p.x, next.z - p.z) : gfV.heading;
   rideSurfer(gfV, heading, moved && state === 'play', dt, 9);
+  if (beerTime > 0) {
+    gfV.rider.rotation.z += Math.sin(time * 2.7) * 0.3;
+    hiccup(gfV.group.position, 1);
+  }
 
-  if (state === 'play' && frame % 40 === 0) {
+  if (state === 'play' && frame % 30 === 0) {
     const h = hearts.find(h => !h.visible);
     if (h) {
       h.visible = true;
@@ -1236,6 +1466,15 @@ function updateGirlfriend(dt) {
   }
 }
 
+// Drunk hiccup bubbles over someone's head.
+function hiccup(pos, seed) {
+  if ((frame + seed * 17) % 45 !== 0) return;
+  for (let i = 0; i < 4; i++) {
+    const p = pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 1.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.4));
+    spawn(foam, p, new THREE.Vector3(0, 0.02 + Math.random() * 0.01, 0), 0.07 + Math.random() * 0.05, 50, {color: GOLD, gravity: -0.0003});
+  }
+}
+
 function updateRays(dt) {
   const flashing = frightTime < 120 && Math.floor(frame / 10) % 2;
   ghosts.forEach((g, i) => {
@@ -1245,6 +1484,12 @@ function updateRays(dt) {
     v.group.position.set(wx(x), 0.12 + waveH(wz(y)) + Math.sin(time * 2.6 + i * 1.7) * 0.05, wz(y));
     if (g.dir.x || g.dir.y) v.heading += angleDiff(v.heading, headingOf(g.dir)) * Math.min(1, dt * 10);
     v.group.rotation.y = v.heading;
+    v.group.rotation.z = beerTime > 0 ? Math.sin(time * 3 + i) * 0.4 : 0;
+    if (beerTime > 0) {
+      v.group.position.x += Math.sin(time * 2.3 + i) * 0.35;
+      v.group.position.z += Math.cos(time * 1.9 + i) * 0.35;
+      hiccup(v.group.position, i + 2);
+    }
 
     const eaten = g.state === 'eaten';
     v.bodyMesh.visible = v.tail.visible = !eaten;
@@ -1269,15 +1514,18 @@ function updateCrabs(dt) {
     if (!v.group.visible) return;
     const {x, y} = rpos(c);
     const moving = state === 'play' && !paused && (c.dir.x || c.dir.y);
-    let lift = 0;
+    let lift = 0, push = 0;
     if (c.flung) {
       const f = 1 - c.flung / 80;
       lift = 14 * f * (1 - f);
+      if (c.thrown) push = f * 12; // the wave carries it off to the south
       v.group.rotation.x += 0.4;
     } else {
       v.group.rotation.x = 0;
     }
-    v.group.position.set(wx(x), 0.02 + waveH(wz(y)) + lift, wz(y));
+    v.group.position.set(wx(x), 0.02 + waveH(wz(y)) + lift, wz(y) + push);
+    v.group.rotation.z = beerTime > 0 ? Math.sin(time * 4 + i) * 0.4 : 0;
+    if (beerTime > 0) hiccup(v.group.position, i + 7);
     // Crabs walk sideways, so they face across their direction of travel.
     if (c.dir.x || c.dir.y) v.heading += angleDiff(v.heading, headingOf(c.dir) + Math.PI / 2) * Math.min(1, dt * 8);
     v.group.rotation.y = v.heading;
@@ -1349,6 +1597,7 @@ function updateCamera(dt) {
   camLook.lerp(look, 1 - Math.exp(-dt * 4.2));
   camera.position.copy(camPos);
   camera.lookAt(camLook);
+  if (beerTime > 0) camera.rotateZ(Math.sin(time * 1.4) * 0.07);
 }
 
 // ---------------------------------------------------------------- HUD & overlays
@@ -1381,6 +1630,7 @@ function updateOverlay() {
   setText('toast', toastMsg);
   $('toast').style.opacity = toastTime > 0 ? 1 : 0;
   $('haze').style.opacity = jointTime > 0 ? 1 : redEyes > 0 ? 0.35 : 0;
+  $('smoke').style.opacity = jointTime > 0 ? 0.9 : redEyes > 0 ? 0.3 : 0;
   renderer.domElement.classList.toggle('high', jointTime > 0);
 }
 
@@ -1405,13 +1655,20 @@ function updatePopups() {
 
 // ---------------------------------------------------------------- input
 const KEYS = {arrowup: UP, w: UP, arrowdown: DOWN, s: DOWN, arrowleft: LEFT, a: LEFT, arrowright: RIGHT, d: RIGHT};
+// Drunk steering: everything is reversed, and sometimes you just go wherever.
+function steer(d) {
+  if (beerTime > 0) {
+    d = Math.random() < 0.25 ? DIRS[Math.floor(Math.random() * 4)] : {x: -d.x, y: -d.y};
+  }
+  queued = d;
+}
 function toggleCamera() {
   camMode = camMode === 'follow' ? 'overview' : 'follow';
   $('view').textContent = `Camera: ${camMode === 'follow' ? 'Follow' : 'Overview'}`;
 }
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (KEYS[k]) queued = KEYS[k];
+  if (KEYS[k]) steer(KEYS[k]);
   else if (k === 'enter' && (state === 'start' || state === 'over')) newGame();
   else if ((k === ' ' || k === 'p') && state === 'play') paused = !paused;
   else if (k === 'c') toggleCamera();
@@ -1436,7 +1693,7 @@ canvas.addEventListener('touchmove', e => {
   if (!touchStart) return;
   const t = e.touches[0], dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y;
   if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
-  queued = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : (dy > 0 ? DOWN : UP);
+  steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : (dy > 0 ? DOWN : UP));
   touchStart = {x: t.clientX, y: t.clientY};
 }, {passive: false});
 canvas.addEventListener('click', () => { if (state === 'start' || state === 'over') newGame(); });
@@ -1455,6 +1712,9 @@ function animate() {
   time += dt;
   water.material.uniforms.time.value += dt * 0.55 * (wave ? 1.6 : 1);
   trimMat.emissive.set(state === 'clear' && Math.floor(timer / 12) % 2 ? 0xffffff : 0x2b5cff);
+  if (beach && beach.visible) {
+    for (const c of palmCrowns) c.rotation.set(Math.sin(time * 0.9 + c.userData.phase) * 0.06, 0, Math.sin(time * 1.3 + c.userData.phase) * 0.08);
+  }
   updatePearls();
   updatePacView(dt);
   updateGirlfriend(dt);
@@ -1475,6 +1735,7 @@ window.pacSurf = {
   give(type, n = 1) { inv[type] += n; },
   wave() { waveClock = dest().waveEvery * 60; },
   clear() { for (const row of dots) row.fill(''); dotsLeft = 0; state = 'clear'; timer = 1; },
+  warp(n) { level = n; applyDestination(); startLevel(); },
   spawnItem(type) { const [x, y] = randomTile(2); items.push({type, x, y, t: 0}); },
 };
 window.__started = true;
