@@ -1,10 +1,23 @@
-# Pac-Man Surf 3D
+# Surf 'n' Chomp
 
-A 3D Pac-Man game where Pac-Man and his girlfriend surf through stone sea-wall mazes on open ocean, dodging stingrays, crabs, and big set waves. It's a single HTML file that runs in the browser with [Three.js](https://threejs.org/) (loaded from a CDN, so it needs an internet connection and WebGL).
+A surf, snack & survive adventure: Pac-Man and his girlfriend surf through stone sea-wall mazes on open ocean, dodging stingrays, crabs, and monster waves. Built with [Three.js](https://threejs.org/).
+
+## Share it
+
+**`surf-n-chomp.html` is the whole game in one file.** Send it to anyone. They download it, double-click it, and play in their browser. It works offline: Three.js is bundled inside, so there's nothing else to install.
+
+To grab it from GitHub, open `surf-n-chomp.html` in the repo and click the **Download raw file** button.
+
+`index.html` is the readable source. It loads Three.js from a CDN, so it needs an internet connection. After editing it, rebuild the shareable file:
+
+```bash
+npm install
+npm run build
+```
 
 ## Play
 
-Open `index.html` in a browser.
+Open `surf-n-chomp.html` (or `index.html`) in a browser and hit **Paddle out**.
 
 | Key | Action |
 | --- | --- |

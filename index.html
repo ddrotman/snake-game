@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pac-Man Surf 3D</title>
+<title>Surf 'n' Chomp</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1622; color: #fff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   canvas { display: block; touch-action: none; transition: filter 1.2s; }
@@ -17,6 +17,31 @@
   #overlay.dim { background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55)); }
   #title { margin: 0; font-size: clamp(38px, 9vw, 104px); font-weight: 900; letter-spacing: 0.05em; color: #ffe14d; }
   #sub { margin-top: 12px; font-size: clamp(15px, 2.3vw, 22px); max-width: 720px; line-height: 1.4; }
+  /* Title screen */
+  #intro { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; overflow-y: auto; background: radial-gradient(ellipse at top, rgba(20, 10, 50, 0.35), rgba(2, 10, 20, 0.8)); transition: opacity 0.5s; }
+  body:not(.intro) #intro { opacity: 0; pointer-events: none; }
+  body.intro #hud, body.intro #place, body.intro #controls, body.intro #help { display: none; }
+  .intro-card { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); width: min(1080px, 100%); margin: auto; border-radius: 26px; overflow: hidden; background: rgba(8, 16, 30, 0.82); border: 1px solid rgba(255, 255, 255, 0.14); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .cover { position: relative; min-height: 380px; }
+  .cover svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .cover-title { position: absolute; left: 0; right: 0; top: 18px; text-align: center; padding: 0 12px; }
+  .logo { margin: 0; font-size: clamp(40px, 6.4vw, 78px); font-weight: 900; font-style: italic; letter-spacing: 0.02em; line-height: 0.95; background: linear-gradient(180deg, #fff6b0, #ffd21f 45%, #ff8a1a); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 4px 0 #5a1d4a) drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45)); }
+  .logo span { font-size: 0.55em; vertical-align: 0.3em; background: linear-gradient(180deg, #9ff, #2fd4ff); -webkit-background-clip: text; background-clip: text; }
+  .cover-title p { margin: 8px 0 0; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; font-size: 12px; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
+  .info { padding: 26px 30px 24px; font-size: 15px; line-height: 1.45; }
+  .pitch { margin: 0 0 14px; font-size: 16px; color: #e8f4ff; }
+  .info h2 { margin: 16px 0 8px; font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: #7fe6ff; }
+  .info ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  kbd { display: inline-block; min-width: 1.6em; padding: 1px 6px; margin-right: 3px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.35); border-bottom-width: 3px; background: rgba(255, 255, 255, 0.08); font: 700 12px/1.6 system-ui, sans-serif; text-align: center; }
+  #playBtn { margin-top: 20px; width: 100%; padding: 14px; border: 0; border-radius: 16px; font: 900 20px system-ui, sans-serif; letter-spacing: 0.04em; color: #2a1200; background: linear-gradient(180deg, #ffe46b, #ffb21f); box-shadow: 0 6px 0 #b86a00, 0 14px 30px rgba(255, 180, 40, 0.35); cursor: pointer; }
+  #playBtn:not(:disabled):hover { filter: brightness(1.06); transform: translateY(-1px); }
+  #playBtn:disabled { opacity: 0.6; cursor: default; }
+  .hint { margin: 10px 0 0; text-align: center; font-size: 12px; opacity: 0.7; }
+  @media (max-width: 760px) {
+    .intro-card { grid-template-columns: 1fr; }
+    .cover { min-height: 230px; }
+    .info { padding: 18px 18px 20px; font-size: 14px; }
+  }
   #toast { position: fixed; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 16px; font-weight: 700; font-size: 16px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
   #haze { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.5s; background: radial-gradient(ellipse at center, rgba(120, 255, 140, 0) 35%, rgba(70, 150, 60, 0.32) 80%, rgba(40, 90, 40, 0.55)); }
   #smoke { position: fixed; inset: -10%; pointer-events: none; opacity: 0; transition: opacity 2s; overflow: hidden; }
@@ -44,7 +69,7 @@
   .popup { position: fixed; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; color: #9ff; text-shadow: 0 0 12px #0ff; pointer-events: none; white-space: nowrap; }
 </style>
 </head>
-<body>
+<body class="intro">
 <div id="haze"></div>
 <div id="smoke"><i></i><i></i><i></i><i></i></div>
 <div id="hud" class="glass">
@@ -58,7 +83,87 @@
 <div id="speech"></div>
 <div id="flash"></div>
 <div id="air" class="glass"><span>🫧 Air</span><div><i id="airFill"></i></div></div>
-<div id="overlay" class="dim"><h1 id="title">Loading…</h1><div id="sub"></div></div>
+<div id="overlay"><h1 id="title"></h1><div id="sub"></div></div>
+<div id="intro">
+  <div class="intro-card">
+    <div class="cover">
+      <svg viewBox="0 0 600 420" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Pac-Man surfing a giant wave at sunset">
+        <defs>
+          <linearGradient id="cSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#241552"/><stop offset=".42" stop-color="#e2557f"/><stop offset=".68" stop-color="#ffb35c"/></linearGradient>
+          <radialGradient id="cSun"><stop offset="0" stop-color="#fffbe0"/><stop offset=".55" stop-color="#ffd25e"/><stop offset="1" stop-color="#ff8a3d" stop-opacity="0"/></radialGradient>
+          <linearGradient id="cSea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#127a8c"/><stop offset="1" stop-color="#03202e"/></linearGradient>
+          <linearGradient id="cWave" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7ff0ea"/><stop offset=".45" stop-color="#1aa3b3"/><stop offset="1" stop-color="#063a4d"/></linearGradient>
+          <radialGradient id="cPac" cx=".35" cy=".3"><stop offset="0" stop-color="#fff2a0"/><stop offset=".5" stop-color="#ffcf1a"/><stop offset="1" stop-color="#e09000"/></radialGradient>
+          <radialGradient id="cPearl"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#ffe2a0"/><stop offset="1" stop-color="#ffe2a0" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="600" height="420" fill="url(#cSky)"/>
+        <circle cx="150" cy="235" r="120" fill="url(#cSun)"/>
+        <rect y="255" width="600" height="165" fill="url(#cSea)"/>
+        <g fill="#ffd9a0" opacity=".55"><rect x="105" y="262" width="90" height="3" rx="1.5"/><rect x="118" y="272" width="64" height="3" rx="1.5"/><rect x="128" y="283" width="44" height="3" rx="1.5"/></g>
+        <!-- palm silhouette -->
+        <g fill="#1b0f2e">
+          <path d="M38 420 C 48 360, 58 300, 86 248 L 92 251 C 68 300, 58 360, 52 420 Z"/>
+          <path d="M88 250 C 60 228, 30 232, 8 250 C 36 238, 62 242, 88 252 Z"/>
+          <path d="M88 250 C 76 220, 52 206, 24 208 C 52 214, 72 228, 86 252 Z"/>
+          <path d="M88 250 C 104 222, 130 212, 158 220 C 130 222, 110 232, 90 254 Z"/>
+          <path d="M88 250 C 116 238, 144 244, 166 264 C 140 252, 114 250, 90 254 Z"/>
+          <path d="M88 250 C 92 226, 86 204, 70 190 C 88 206, 94 226, 90 252 Z"/>
+        </g>
+        <!-- the wave -->
+        <path d="M600 420 L600 92 C 568 48 486 30 420 74 C 378 102 366 152 392 176 C 410 190 432 182 430 164 C 452 186 444 226 404 250 C 338 288 236 306 0 334 L0 420 Z" fill="url(#cWave)"/>
+        <path d="M420 74 C 486 30 568 48 600 92 L600 104 C 566 64 494 52 436 86 C 404 106 392 140 404 162 C 380 146 380 104 420 74 Z" fill="#effcff" opacity=".9"/>
+        <g fill="#fff" opacity=".85"><circle cx="438" cy="70" r="4"/><circle cx="460" cy="58" r="3"/><circle cx="498" cy="50" r="5"/><circle cx="530" cy="52" r="3"/><circle cx="414" cy="86" r="3"/><circle cx="560" cy="62" r="4"/></g>
+        <!-- pearls on the water -->
+        <g><circle cx="120" cy="330" r="9" fill="url(#cPearl)"/><circle cx="160" cy="342" r="9" fill="url(#cPearl)"/><circle cx="200" cy="352" r="9" fill="url(#cPearl)"/><circle cx="240" cy="360" r="14" fill="url(#cPearl)"/></g>
+        <!-- stingray lurking -->
+        <g transform="translate(470 360) rotate(-12)" fill="#ff3b30" opacity=".85"><path d="M0 -18 C 22 -10 46 -2 52 8 C 30 6 14 10 0 22 C -14 10 -30 6 -52 8 C -46 -2 -22 -10 0 -18 Z"/><path d="M0 20 L 4 58 L -2 58 Z"/><circle cx="-8" cy="-6" r="3.5" fill="#fff"/><circle cx="8" cy="-6" r="3.5" fill="#fff"/></g>
+        <!-- girlfriend on her pink board -->
+        <g transform="translate(232 292) rotate(-8)">
+          <ellipse cx="0" cy="22" rx="40" ry="7" fill="#ff7eb6"/>
+          <path d="M0 0 L 22 -9 A 24 24 0 1 1 22 9 Z" fill="url(#cPac)" transform="scale(-1 1)"/>
+          <path d="M-6 -24 l -14 -8 l 2 14 Z M-6 -24 l 12 -12 l 2 14 Z" fill="#e0102f"/>
+          <circle cx="4" cy="-10" r="3" fill="#111"/>
+          <path d="M-20 4 q -4 4 -8 2" stroke="#d4002a" stroke-width="4" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- Pac-Man shredding the face -->
+        <g transform="translate(372 214) rotate(-22)">
+          <ellipse cx="0" cy="40" rx="64" ry="11" fill="#f6f3ea"/>
+          <rect x="-58" y="38" width="116" height="4" rx="2" fill="#0aa5c8"/>
+          <path d="M0 0 L 34 -16 A 38 38 0 1 0 34 16 Z" fill="url(#cPac)"/>
+          <circle cx="2" cy="-20" r="5" fill="#111"/>
+        </g>
+        <g fill="#fff" opacity=".9"><circle cx="300" cy="262" r="4"/><circle cx="286" cy="250" r="3"/><circle cx="312" cy="276" r="5"/><circle cx="290" cy="276" r="2.5"/></g>
+      </svg>
+      <div class="cover-title">
+        <h1 class="logo">SURF <span>'n'</span> CHOMP</h1>
+        <p>A surf, snack &amp; survive adventure</p>
+      </div>
+    </div>
+    <div class="info">
+      <p class="pitch">Pac-Man ditched the arcade for the ocean. Chomp every pearl in the maze, ride monster waves right over the walls, dive for sunken treasure, and keep your girlfriend happy. Just don’t get stung.</p>
+      <h2>How to play</h2>
+      <ul class="keys">
+        <li><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd> Steer and chomp every pearl</li>
+        <li><kbd>D</kbd> Catch a wave, then <kbd>↑</kbd> <kbd>↓</kbd> for tricks</li>
+        <li><kbd>S</kbd> Dive under the walls (watch your air!)</li>
+        <li><kbd>X</kbd> Fish for stingrays &nbsp; <kbd>T</kbd> Set a fish trap</li>
+        <li><kbd>W</kbd> 🍺 &nbsp; <kbd>A</kbd> 🌿 &nbsp;Use at your own risk</li>
+        <li><kbd>Space</kbd> Pause &nbsp; <kbd>C</kbd> Camera</li>
+      </ul>
+      <h2>What’s out there</h2>
+      <ul class="teasers">
+        <li>🌊 Waves the size of buildings, from every direction</li>
+        <li>💰 Treasure hidden where only divers go</li>
+        <li>💕 A girlfriend with opinions about your habits</li>
+        <li>✈️ Four legendary surf spots to travel to</li>
+        <li>❓ …and a few surprises we’re not telling you about 🤫</li>
+      </ul>
+      <button id="playBtn" disabled>Loading the ocean…</button>
+      <p class="hint">On a phone? Swipe to steer and tap the buttons.</p>
+    </div>
+  </div>
+</div>
+
 <div id="controls">
   <div class="group">
     <button id="beerBtn" class="glass"><i>W</i>🍺 <b id="beerCount">0</b></button>
@@ -76,8 +181,7 @@
   // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
   setTimeout(() => {
     if (!window.__started) {
-      document.getElementById('title').textContent = 'Couldn’t start 3D';
-      document.getElementById('sub').textContent = 'This game needs WebGL and an internet connection to load Three.js.';
+      document.getElementById('playBtn').textContent = 'Couldn’t start the 3D ocean. Try a newer browser.';
     }
   }, 10000);
 </script>
@@ -2799,7 +2903,7 @@ function setText(id, value) {
 
 function updateOverlay() {
   let title = '', sub = '', dim = false;
-  if (state === 'start') { title = 'PAC-MAN SURF'; sub = `${dest().name} · Press Enter or tap to start`; dim = true; }
+  if (state === 'start') { /* the title screen covers this */ }
   else if (state === 'ready') { title = 'READY!'; sub = dest().name; }
   else if (state === 'clear') title = 'LEVEL CLEAR!';
   else if (state === 'travel') { title = '✈️ Next stop'; sub = dest().name; dim = true; }
@@ -2839,6 +2943,7 @@ function updateOverlay() {
   $('haze').style.opacity = jointTime > 0 ? 1 : redEyes > 0 ? 0.35 : 0;
   $('smoke').style.opacity = jointTime > 0 ? 0.9 : redEyes > 0 ? 0.3 : 0;
   renderer.domElement.classList.toggle('high', jointTime > 0);
+  document.body.classList.toggle('intro', state === 'start');
 }
 
 const popupEls = new Map();
@@ -2906,7 +3011,7 @@ let touchStart = null;
 const canvas = renderer.domElement;
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (state === 'start' || state === 'over') { newGame(); return; }
+  if (state === 'over') { newGame(); return; }
   touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
 }, {passive: false});
 canvas.addEventListener('touchmove', e => {
@@ -2917,7 +3022,8 @@ canvas.addEventListener('touchmove', e => {
   steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? RIGHT : LEFT) : (dy > 0 ? DOWN : UP));
   touchStart = {x: t.clientX, y: t.clientY};
 }, {passive: false});
-canvas.addEventListener('click', () => { if (state === 'start' || state === 'over') newGame(); });
+canvas.addEventListener('click', () => { if (state === 'over') newGame(); });
+$('playBtn').addEventListener('click', () => { $('playBtn').blur(); newGame(); });
 
 // ---------------------------------------------------------------- main loop
 applyDestination();
@@ -3000,6 +3106,8 @@ window.pacSurf = {
   spawnItem(type) { const [x, y] = randomTile(2); items.push({type, x, y, t: 0}); },
 };
 window.__started = true;
+$('playBtn').disabled = false;
+$('playBtn').textContent = 'Paddle out ▶';
 animate();
 </script>
 </body>

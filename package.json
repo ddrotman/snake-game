@@ -1,0 +1,12 @@
+{
+  "name": "surf-n-chomp",
+  "private": true,
+  "description": "Surf 'n' Chomp: a 3D surfing Pac-Man game in a single HTML file",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.20.2",
+    "three": "0.160.0"
+  }
+}
