@@ -34,6 +34,7 @@
   #controls .group { flex-wrap: wrap; max-width: calc(100vw - 150px); }
   #controls button.pulse { animation: pulse 0.6s ease-in-out infinite alternate; border-color: #7ff; }
   @keyframes pulse { from { box-shadow: 0 0 0 rgba(127, 255, 255, 0); } to { box-shadow: 0 0 18px rgba(127, 255, 255, 0.9); } }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
   #speech { position: fixed; transform: translate(-50%, -100%); padding: 8px 14px; border-radius: 16px; background: #fff; color: #c2002f; font-weight: 800; font-size: 15px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.25s; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   #speech::after { content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); border: 8px solid transparent; border-bottom: 0; border-top-color: #fff; }
   .popup { position: fixed; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; color: #9ff; text-shadow: 0 0 12px #0ff; pointer-events: none; white-space: nowrap; }
@@ -51,6 +52,7 @@
 <div id="place"></div>
 <div id="toast" class="glass"></div>
 <div id="speech"></div>
+<div id="flash"></div>
 <div id="overlay" class="dim"><h1 id="title">Loading…</h1><div id="sub"></div></div>
 <div id="controls">
   <div class="group">
@@ -58,10 +60,11 @@
     <button id="jointBtn" class="glass">🌿 Joint <b id="jointCount">0</b></button>
     <button id="diveBtn" class="glass">🤿 Dive <b id="diveCount">X</b></button>
     <button id="surfBtn" class="glass">🏄 Surf <b>F</b></button>
+    <button id="fishBtn" class="glass">🎣 Fish <b id="fishCount">G</b></button>
   </div>
   <button id="view" class="glass">Camera: Follow</button>
 </div>
-<div id="help">Arrows / WASD move · X dive · F catch a wave · B beer · J joint · Space pause · C camera · Swipe on mobile</div>
+<div id="help">Arrows move · F surf (↑ ↓ tricks) · X dive · G fish · B beer · J joint · Space pause · C camera</div>
 
 <script>
   // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
@@ -156,20 +159,20 @@ const MODES = [7, 20, 7, 20, 5, 20, 5, Infinity]; // seconds, alternating scatte
 const HOME = {x: 9, y: 9}, EXIT = {x: 9, y: 7};
 const RAYS = [
   {name: 'blinky', color: 0xff3b30, start: {x: 9, y: 7}, dir: LEFT, corner: {x: W - 2, y: -2}, release: 0},
-  {name: 'pinky', color: 0xff8ce8, start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 2},
-  {name: 'inky', color: 0x2ff3ff, start: {x: 8, y: 9}, dir: RIGHT, corner: {x: W - 1, y: H + 1}, release: 5},
+  {name: 'pinky', color: 0xff8ce8, start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 5},
 ];
 const BEER_TIME = 420, JOINT_TIME = 420, RED_EYES_EXTRA = 240;
-const DIVE_TIME = 240, DIVE_COOLDOWN = 480;
+const DIVE_TIME = 240, DIVE_COOLDOWN = 480, AIR_TIME = 48, HOOK_TIME = 70;
 
 let dots, dotsLeft, pac, queued, ghosts, crabs, items, popups, wave;
-let score = 0, lives = 3, level = 1, state = 'start', timer = 0, paused = false;
+let score = 0, lives = 5, level = 1, state = 'start', timer = 0, paused = false;
 let frame = 0, roundTime = 0, modeIndex = 0, modeTime = 0, frightTime = 0, combo = 0, freeze = 0;
 let beerTime = 0, jointTime = 0, redEyes = 0, waveClock = 0, waveWarned = false, itemClock = 0;
 let inv = {beer: 1, joint: 1};
 let toastMsg = '', toastTime = 0, trailReset = true;
 let whale = null, ufo = null, discoTime = 0, eventClock = 0, nextEventAt = 1800, lastEvent = '';
-let gfMad = 0, gfForgive = 0, speech = '', speechTime = 0;
+let gfMad = 0, gfForgive = 0, speech = '', speechTime = 0, gfFat = 0, gfGlam = false;
+let starfish = null, starClock = 0, treasure = null, flashTime = 0;
 let best = 0;
 try { best = Number(localStorage.getItem('pacBest')) || 0; } catch (e) {}
 
@@ -203,30 +206,41 @@ function randomTile(minDist) {
 function loadDots() {
   dots = MAP.map(row => row.split('').map(c => (c === '.' || c === 'o') ? c : ''));
   dotsLeft = dots.flat().filter(Boolean).length;
+  // Hide a treasure chest on the seafloor under an inner wall next to open water.
+  const spots = [];
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      if (MAP[y][x] !== '#' || inPen(x, y) || (y >= 7 && y <= 11 && x >= 6 && x <= 12)) continue;
+      if (DIRS.some(d => MAP[y + d.y][x + d.x] !== '#' && MAP[y + d.y][x + d.x] !== '-')) spots.push({x, y});
+    }
+  }
+  treasure = {...spots[Math.floor(Math.random() * spots.length)], found: false};
 }
 
 function resetPositions() {
-  pac = {x: 9, y: 15, dir: NONE, face: LEFT, p: 0, surge: 0, stun: 0, crabSafe: 0, rayBlind: 0, mode: 'normal', dive: 0, diveCool: 0, sx: 0, drift: 0, lastRow: 0};
+  pac = {x: 9, y: 15, dir: NONE, face: LEFT, p: 0, surge: 0, stun: 0, crabSafe: 0, rayBlind: 0, mode: 'normal', dive: 0, diveCool: 0, sx: 0, drift: 0, lastRow: 0, wantsSurf: false, air: 0, trick: '', combo: 0, fishCool: 0};
   queued = LEFT;
-  ghosts = RAYS.map(g => ({...g, x: g.start.x, y: g.start.y, p: 0, state: g.release ? 'house' : 'active', fright: false, abducted: 0}));
-  crabs = Array.from({length: Math.min(4, 1 + Math.floor(level / 2))}, () => {
+  ghosts = RAYS.map(g => ({...g, x: g.start.x, y: g.start.y, p: 0, state: g.release ? 'house' : 'active', fright: false, abducted: 0, hooked: 0}));
+  crabs = Array.from({length: level < 3 ? 1 : 2}, () => {
     const [x, y] = randomTile(6);
     return {x, y, dir: NONE, p: 0, flung: 0};
   });
   items = [];
   popups = [];
   wave = null;
+  starfish = null;
+  starClock = 0;
   whale = ufo = null;
   roundTime = modeIndex = modeTime = frightTime = freeze = 0;
   beerTime = jointTime = waveClock = itemClock = discoTime = eventClock = 0;
-  nextEventAt = 1500 + Math.random() * 600;
+  nextEventAt = 2400 + Math.random() * 900;
   waveWarned = false;
   trailReset = true;
 }
 
 function startLevel() { loadDots(); resetPositions(); state = 'ready'; timer = 120; }
 function newGame() {
-  score = 0; lives = 3; level = 1; paused = false; redEyes = 0; gfMad = 0; speechTime = 0;
+  score = 0; lives = 5; level = 1; gfFat = 0; gfGlam = false; paused = false; redEyes = 0; gfMad = 0; speechTime = 0;
   inv = {beer: 1, joint: 1};
   applyDestination();
   startLevel();
@@ -269,16 +283,35 @@ function startDive() {
 }
 
 // Catch the set wave as it reaches you and ride the crest over the maze.
+// Press F any time a wave is on its way: you paddle out and pop up when it reaches you.
 function catchWave() {
   if (state !== 'play' || paused || pac.mode !== 'normal') return;
   const rp = rpos(pac);
-  if (!wave || wave.row < rp.y - 3 || wave.row > rp.y + 1.5) { toast('🌊 Wait for a wave to reach you!', 70); return; }
+  if (wave && wave.row > rp.y - 1.5 && wave.row < rp.y + 2.5) { startSurf(); return; }
+  if ((wave && wave.row < rp.y) || waveWarned) {
+    pac.wantsSurf = true;
+    toast('🏄 Paddling out… you’ll catch it when it gets here', 100);
+  } else {
+    toast('🌊 No wave yet. Watch for the warning!', 70);
+  }
+}
+
+function startSurf() {
+  const rp = rpos(pac);
   pac.mode = 'surf';
   pac.sx = rp.x;
   pac.drift = 0;
   pac.lastRow = wave.row;
-  pac.surge = pac.stun = 0;
-  toast('🏄 Riding the wave! ← → to carve', 120);
+  pac.surge = pac.stun = pac.air = pac.combo = 0;
+  pac.wantsSurf = false;
+  toast('🏄 Riding! ← → carve · ↑ aerial 360 · ↓ backflip', 150);
+}
+
+const TRICKS = {spin: 'AERIAL 360', flip: 'BACKFLIP'};
+function doTrick(kind) {
+  if (pac.air > 0) return;
+  pac.air = AIR_TIME;
+  pac.trick = kind;
 }
 
 function landSurf() {
@@ -298,8 +331,78 @@ function landSurf() {
   queued = NONE;
   pac.mode = 'normal';
   pac.rayBlind = pac.crabSafe = 90;
-  addScore(200);
-  popups.push({x: pac.x, y: pac.y, text: '🏄 TUBE RIDE +200', t: 70});
+  const bonus = 200 + 150 * pac.combo;
+  addScore(bonus);
+  popups.push({x: pac.x, y: pac.y, text: pac.combo ? `🏄 ${pac.combo}-TRICK RIDE +${bonus}` : `🏄 TUBE RIDE +${bonus}`, t: 80});
+}
+
+// Wipe out every enemy on the board: stingrays swim home, crabs get flung.
+function nukeEnemies() {
+  let n = 0;
+  for (const g of ghosts) {
+    if (g.state !== 'active' && g.state !== 'leaving') continue;
+    g.state = 'eaten';
+    g.fright = false;
+    g.abducted = g.hooked = 0;
+    n++;
+  }
+  for (const c of crabs) if (!c.flung) { c.flung = 80; c.thrown = false; n++; }
+  addScore(300 * n);
+  flashTime = 40;
+}
+
+function updateStarfish() {
+  if (starfish) {
+    if (++starfish.t > 720) starfish = null;
+  } else if (++starClock >= 1500) {
+    starClock = 0;
+    const [x, y] = randomTile(5);
+    starfish = {x, y, t: 0};
+  }
+  if (!starfish || pac.mode !== 'normal') return;
+  const pp = rpos(pac);
+  if (Math.abs(pp.x - starfish.x) + Math.abs(pp.y - starfish.y) < 0.6) {
+    starfish = null;
+    nukeEnemies();
+    toast('⭐ STARFISH POWER! Every enemy is wiped out', 150);
+  }
+}
+
+function findTreasure() {
+  treasure.found = true;
+  nukeEnemies();
+  addScore(1000);
+  gfGlam = true;
+  gfMad = 0;
+  gfForgive = 1;
+  say('Oh. My. God. Is that for ME?! 💎', 200);
+  toast('💰 TREASURE! Enemies wiped out and your girlfriend is glowing', 200);
+}
+
+const FEED_LINES = ['Mmm, stingray sashimi! 😋', 'Ooh, another one? Okay…', 'I’m getting kinda full…', 'Babe, I can’t feel my legs 😩', 'STOP FEEDING ME 🐡', 'I can barely paddle…'];
+// Cast a line at the nearest stingray, reel it in, and feed it to her.
+function castLine() {
+  if (state !== 'play' || paused || pac.mode !== 'normal' || pac.fishCool > 0) return;
+  const pp = rpos(pac);
+  let pick = null, pickDist = 5.5 ** 2;
+  for (const g of ghosts) {
+    if (g.state !== 'active' || g.abducted || g.hooked) continue;
+    const gp = rpos(g), d = (gp.x - pp.x) ** 2 + (gp.y - pp.y) ** 2;
+    if (d < pickDist) { pickDist = d; pick = g; }
+  }
+  if (!pick) { toast('🎣 Nothing biting. Get closer to a stingray', 70); pac.fishCool = 30; return; }
+  pick.hooked = HOOK_TIME;
+  pac.fishCool = 240;
+  const gp = rpos(pick);
+  popups.push({x: gp.x, y: gp.y, text: '🎣 HOOKED!', t: 50});
+}
+
+function feedGirlfriend() {
+  gfFat = Math.min(5, gfFat + 1);
+  addScore(300);
+  gfMad = 0;
+  gfForgive = 1;
+  say(FEED_LINES[Math.min(FEED_LINES.length - 1, gfFat - 1)], 170);
 }
 
 function eatDot(x, y) {
@@ -373,6 +476,12 @@ function surface() {
 }
 
 function updateSurf() {
+  if (pac.air > 0 && --pac.air === 0) {
+    pac.combo++;
+    const pts = 150 * pac.combo;
+    addScore(pts);
+    popups.push({x: pac.sx, y: wave ? wave.row : pac.y, text: `${TRICKS[pac.trick]}${pac.combo > 1 ? ` x${pac.combo}` : ''} +${pts}`, t: 60});
+  }
   if (!wave || wave.row >= H - 2) { landSurf(); return; }
   pac.sx = Math.min(W - 2, Math.max(1, pac.sx + pac.drift * 0.09));
   const col = Math.round(pac.sx);
@@ -412,6 +521,7 @@ function updatePac() {
 
 function pacArrive() {
   if (pac.mode === 'dive') {
+    if (treasure && !treasure.found && pac.x === treasure.x && pac.y === treasure.y) findTreasure();
     const underWall = MAP[pac.y][pac.x] === '#';
     if (pac.dive > 0 || underWall) {
       if (pac.dive <= 0) pac.dir = escapeDir(pac.x, pac.y);
@@ -433,7 +543,7 @@ function pacArrive() {
 }
 
 function frighten() {
-  frightTime = Math.max(2, 7 - level) * 60;
+  frightTime = Math.max(4, 9 - level) * 60;
   combo = 0;
   for (const g of ghosts) {
     if (g.state === 'active') { g.fright = true; reverse(g); }
@@ -484,11 +594,15 @@ function ghostSpeed(g) {
   if (g.state === 'eaten') s = 0.22;
   else if (g.state === 'leaving') s = 0.07;
   else if (g.fright || (g.y === 9 && (g.x <= 4 || g.x >= 14))) s = 0.05;
-  else s = Math.min(0.125, 0.09 + 0.005 * (level - 1));
+  else s = Math.min(0.105, 0.075 + 0.004 * (level - 1));
   return s * timeScale();
 }
 
 function updateGhost(g) {
+  if (g.hooked > 0) {
+    if (--g.hooked === 0) { g.state = 'eaten'; g.fright = false; feedGirlfriend(); }
+    return;
+  }
   if (g.abducted > 0) {
     if (--g.abducted === 0) { g.state = 'eaten'; g.fright = false; }
     return;
@@ -523,7 +637,7 @@ function checkCollisions() {
   if (pac.mode !== 'normal' || pac.rayBlind > 0) return;
   const pp = rpos(pac);
   for (const g of ghosts) {
-    if (g.state !== 'active' || g.abducted) continue;
+    if (g.state !== 'active' || g.abducted || g.hooked) continue;
     const gp = rpos(g);
     if ((pp.x - gp.x) ** 2 + (pp.y - gp.y) ** 2 > 0.4) continue;
     if (g.fright) {
@@ -585,14 +699,15 @@ function updateWaves(ts) {
   if (!wave) {
     const every = dest().waveEvery * 60;
     waveClock += ts;
-    if (waveClock >= every - 120 && !waveWarned) { waveWarned = true; toast('🌊 Set wave incoming! Press F to catch it'); }
+    if (waveClock >= every - 180 && !waveWarned) { waveWarned = true; toast('🌊 Wave coming! Press F to surf it'); }
     if (waveClock >= every) { wave = {row: -5}; waveClock = 0; waveWarned = false; }
     return;
   }
   const prev = wave.row;
-  wave.row += 0.11 * ts;
+  wave.row += (pac.mode === 'surf' ? 0.075 : 0.11) * ts;
   const py = rpos(pac).y;
-  if (pac.mode === 'normal' && prev < py && wave.row >= py) pac.surge = 34;
+  if (pac.mode === 'normal' && pac.wantsSurf && prev < py - 0.3 && wave.row >= py - 0.3) startSurf();
+  else if (pac.mode === 'normal' && prev < py && wave.row >= py) pac.surge = 34;
   for (const c of crabs) {
     const cy = rpos(c).y;
     if (!c.flung && prev < cy && wave.row >= cy) { c.flung = 80; c.thrown = true; }
@@ -630,7 +745,7 @@ function updateEvents() {
   if (ufo && ++ufo.t > 390) ufo = null;
   if (++eventClock >= nextEventAt) {
     eventClock = 0;
-    nextEventAt = 1500 + Math.random() * 600;
+    nextEventAt = 2400 + Math.random() * 900;
     triggerEvent();
   }
 }
@@ -648,6 +763,7 @@ function step() {
   popups.forEach(p => p.t--);
   popups = popups.filter(p => p.t > 0);
   if (toastTime > 0) toastTime--;
+  if (flashTime > 0) flashTime--;
   if (state === 'ready') { if (--timer <= 0) state = 'play'; return; }
   if (state === 'dying') {
     if (--timer > 0) return;
@@ -657,7 +773,7 @@ function step() {
   }
   if (state === 'clear') { if (--timer <= 0) { level++; state = 'travel'; timer = 210; } return; }
   if (state === 'travel') {
-    if (--timer === 105) { applyDestination(); loadDots(); resetPositions(); }
+    if (--timer === 105) { applyDestination(); loadDots(); resetPositions(); gfFat = Math.max(0, gfFat - 1); }
     if (timer <= 0) { state = 'ready'; timer = 120; }
     return;
   }
@@ -672,6 +788,7 @@ function step() {
   if (pac.crabSafe > 0) pac.crabSafe--;
   if (pac.rayBlind > 0) pac.rayBlind--;
   if (pac.diveCool > 0) pac.diveCool--;
+  if (pac.fishCool > 0) pac.fishCool--;
   if (frightTime > 0) {
     if (--frightTime === 0) ghosts.forEach(g => { g.fright = false; });
   } else if (++modeTime >= MODES[modeIndex] * 60) {
@@ -680,13 +797,14 @@ function step() {
     ghosts.forEach(g => { if (g.state === 'active') reverse(g); });
   }
 
-  if (beerTime > 0 && pac.mode === 'normal' && Math.random() < 0.012) queued = DIRS[Math.floor(Math.random() * 4)]; // drunk swerve
+  if (beerTime > 0 && pac.mode === 'normal' && Math.random() < 0.006) queued = DIRS[Math.floor(Math.random() * 4)]; // drunk swerve
   updateEvents();
   updateGfMood();
   updateWaves(ts);
   updatePac();
   if (state !== 'play') return;
   updateItems();
+  updateStarfish();
   checkCollisions();
   if (state !== 'play') return;
   ghosts.forEach(updateGhost);
@@ -847,12 +965,12 @@ const wallGeo = new RoundedBoxGeometry(S * 0.995, WALL_H, S * 0.995, 3, 0.09);
   wallGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 }
 const wallMat = new THREE.MeshStandardMaterial({...makeStoneTextures(), vertexColors: true, roughness: 1, bumpScale: 4, envMapIntensity: 0.45});
-const trimMat = new THREE.MeshStandardMaterial({color: 0x000000, emissive: 0x2b5cff, emissiveIntensity: 5});
+const trimMat = new THREE.MeshStandardMaterial({color: 0x000000, emissive: 0x2b5cff, emissiveIntensity: 3.5});
 const trimGeo = new THREE.BoxGeometry(1, 1, 1);
 const pearlGeo = new THREE.SphereGeometry(0.14, 16, 12);
 const bigPearlGeo = new THREE.SphereGeometry(0.36, 32, 24);
-const pearlMat = new THREE.MeshStandardMaterial({color: 0xfff4de, emissive: 0xffc580, emissiveIntensity: 2.2, roughness: 0.2});
-const bigPearlMat = new THREE.MeshStandardMaterial({color: 0xfff8e8, emissive: 0xffe2a0, emissiveIntensity: 4, roughness: 0.1});
+const pearlMat = new THREE.MeshStandardMaterial({color: 0xfff4de, emissive: 0xffc580, emissiveIntensity: 1.5, roughness: 0.2});
+const bigPearlMat = new THREE.MeshStandardMaterial({color: 0xfff8e8, emissive: 0xffe2a0, emissiveIntensity: 3, roughness: 0.1});
 
 const gate = new THREE.Mesh(new THREE.BoxGeometry(S, 0.12, 0.12), new THREE.MeshStandardMaterial({color: 0, emissive: 0xff7be0, emissiveIntensity: 5}));
 gate.position.set(wx(9), 0.7, wz(8));
@@ -1130,7 +1248,7 @@ function makeSurfer({color, board, stripe, girl}) {
   const eyeMat = new THREE.MeshPhysicalMaterial({color: 0xffffff, roughness: 0.12, clearcoat: 1});
   const pupilMat = new THREE.MeshPhysicalMaterial({color: girl ? 0x1b78e0 : 0x111111, roughness: 0.1, clearcoat: 1});
   const darkMat = new THREE.MeshPhysicalMaterial({color: 0x111111, roughness: 0.1, clearcoat: 1});
-  const eyes = [], lids = [], brows = [];
+  const eyes = [], lids = [], brows = [], glam = [];
   for (const sx of [-1, 1]) {
     const eye = new THREE.Group();
     eye.position.set(sx * 0.34, 0.72, 0.52).normalize().multiplyScalar(R * 0.86);
@@ -1209,6 +1327,30 @@ function makeSurfer({color, board, stripe, girl}) {
       brows.push(brow);
       upper.add(brow);
     });
+    // Treasure glam: a tiara and a pearl necklace.
+    const tiaraGold = new THREE.MeshStandardMaterial({color: 0xffd34d, metalness: 1, roughness: 0.2, emissive: 0x664400, emissiveIntensity: 0.5});
+    const tiara = new THREE.Group();
+    tiara.add(new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.035, 8, 32, Math.PI), tiaraGold));
+    [0x5ad1ff, 0xff4fa3, 0x5ad1ff].forEach((c, i) => {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.075), new THREE.MeshStandardMaterial({color: c, emissive: c, emissiveIntensity: 1.5, roughness: 0.1}));
+      const a = Math.PI * (0.25 + i * 0.25);
+      gem.position.set(Math.cos(a) * 0.32, Math.sin(a) * 0.32 + 0.05, 0);
+      tiara.add(gem);
+    });
+    tiara.position.set(0, R * 0.78, 0.12);
+    tiara.rotation.x = -0.35;
+    upper.add(tiara);
+    const necklace = new THREE.Group();
+    const pearlWhite = new THREE.MeshPhysicalMaterial({color: 0xfffaf0, roughness: 0.15, clearcoat: 1, sheen: 1});
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * Math.PI * 2;
+      const bead = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), pearlWhite);
+      bead.position.set(Math.cos(a) * R * 0.92, -R * 0.42, Math.sin(a) * R * 0.92);
+      necklace.add(bead);
+    }
+    lower.add(necklace);
+    glam.push(tiara, necklace);
+    glam.forEach(m => { m.visible = false; });
     // Pink heart sunglasses pushed up on her head.
     const lensMat = new THREE.MeshPhysicalMaterial({color: 0xff2d7a, roughness: 0.05, clearcoat: 1, transparent: true, opacity: 0.8});
     const goldMat = new THREE.MeshStandardMaterial({color: 0xe8c15a, metalness: 1, roughness: 0.25});
@@ -1236,7 +1378,7 @@ function makeSurfer({color, board, stripe, girl}) {
   rider.add(body);
   group.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(group);
-  return {group, rider, upper, lower, eyes, eyeMat, lids, brows, mat, baseColor: new THREE.Color(color), board: [deck, stripeMesh, fin], R, heading: Math.PI * 1.5, lean: 0};
+  return {group, rider, body, upper, lower, eyes, eyeMat, lids, brows, glam, mat, baseColor: new THREE.Color(color), board: [deck, stripeMesh, fin], R, heading: Math.PI * 1.5, lean: 0};
 }
 
 const pacV = makeSurfer({color: 0xffb300, board: 0xf6f3ea, stripe: 0x0aa5c8});
@@ -1410,8 +1552,8 @@ const labelGeo = new THREE.CylinderGeometry(0.173, 0.173, 0.22, 32, 1, true);
 const capGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.05, 16);
 const ringGeo = new THREE.TorusGeometry(0.7, 0.03, 8, 48).rotateX(Math.PI / 2);
 const ringMats = {
-  beer: new THREE.MeshStandardMaterial({color: 0, emissive: 0xffc23a, emissiveIntensity: 4}),
-  joint: new THREE.MeshStandardMaterial({color: 0, emissive: 0x4dff6a, emissiveIntensity: 4}),
+  beer: new THREE.MeshStandardMaterial({color: 0, emissive: 0xffc23a, emissiveIntensity: 2.5}),
+  joint: new THREE.MeshStandardMaterial({color: 0, emissive: 0x4dff6a, emissiveIntensity: 2.5}),
 };
 function makeItem(type) {
   const group = new THREE.Group(), prop = new THREE.Group();
@@ -1615,7 +1757,7 @@ function makeDolphin() {
   scene.add(g);
   return {g, t: -1, wait: 120 + Math.random() * 300, start: new THREE.Vector3(), dir: new THREE.Vector3()};
 }
-const dolphins = [makeDolphin(), makeDolphin()];
+const dolphins = [makeDolphin()];
 function updateDolphins() {
   for (const d of dolphins) {
     if (d.t < 0) {
@@ -1645,7 +1787,7 @@ function splash(pos, n, power) {
 const gullWhite = new THREE.MeshStandardMaterial({color: 0xf4f4f0, roughness: 0.8});
 const gullGray = new THREE.MeshStandardMaterial({color: 0x8a939c, roughness: 0.8});
 const beakMat = new THREE.MeshStandardMaterial({color: 0xf0a020, roughness: 0.5});
-const gulls = Array.from({length: 5}, () => {
+const gulls = Array.from({length: 2}, () => {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), gullWhite);
   body.scale.set(0.18, 0.16, 0.45);
@@ -1778,10 +1920,90 @@ function updateDisco(dt) {
   });
 }
 
+// ---------------------------------------------------------------- starfish, treasure, fishing line
+const starShape = new THREE.Shape();
+for (let i = 0; i < 10; i++) {
+  const r = i % 2 ? 0.2 : 0.55, a = i / 10 * Math.PI * 2 + Math.PI / 2;
+  if (i) starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  else starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+}
+const starV = new THREE.Group();
+const starMesh = new THREE.Mesh(
+  new THREE.ExtrudeGeometry(starShape, {depth: 0.12, bevelEnabled: true, bevelSize: 0.07, bevelThickness: 0.07, bevelSegments: 3}).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({color: 0xffb36b, emissive: 0xff7a2a, emissiveIntensity: 3, roughness: 0.4}));
+starMesh.castShadow = true;
+const starLight = new THREE.PointLight(0xff8a3a, 8, 7, 2);
+starLight.position.y = 0.6;
+starV.add(starMesh, new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({color: 0, emissive: 0xff9a3a, emissiveIntensity: 3})), starLight);
+starV.visible = false;
+scene.add(starV);
+function updateStarView() {
+  starV.visible = !!starfish && state === 'play' && (starfish.t < 600 || Math.floor(starfish.t / 8) % 2 === 0);
+  if (!starfish) return;
+  const z = wz(starfish.y);
+  starV.position.set(wx(starfish.x), waveH(z), z);
+  starMesh.position.y = 0.5 + Math.sin(time * 3) * 0.12;
+  starMesh.rotation.set(0.4 * Math.sin(time * 1.5), time * 2, 0);
+}
+
+const chest = (() => {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({color: 0x6b4423, roughness: 0.8});
+  const gold = new THREE.MeshStandardMaterial({color: 0xffc83a, metalness: 1, roughness: 0.25, emissive: 0x553300, emissiveIntensity: 0.6});
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.8), wood);
+  base.position.y = 0.35;
+  const lidPivot = new THREE.Group();
+  lidPivot.position.set(0, 0.7, -0.4);
+  lidPivot.rotation.x = -0.9;
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.2, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2), wood);
+  lid.position.z = 0.4;
+  lidPivot.add(lid);
+  for (const x of [-0.45, 0.45]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.72, 0.82), gold);
+    band.position.set(x, 0.36, 0);
+    g.add(band);
+  }
+  for (let i = 0; i < 9; i++) {
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 16), gold);
+    coin.position.set((Math.random() - 0.5) * 0.9, 0.72 + Math.random() * 0.1, (Math.random() - 0.5) * 0.5);
+    coin.rotation.set(Math.random(), 0, Math.random());
+    g.add(coin);
+  }
+  const glow = new THREE.PointLight(0xffc83a, 14, 9, 2);
+  glow.position.y = 1.2;
+  g.add(base, lidPivot, glow);
+  g.scale.setScalar(1.4);
+  g.userData.glow = glow;
+  underwater.add(g);
+  return g;
+})();
+function updateTreasureView() {
+  chest.visible = !!treasure && !treasure.found;
+  if (!chest.visible) return;
+  chest.position.set(wx(treasure.x), FLOOR_Y, wz(treasure.y));
+  chest.userData.glow.intensity = 12 + Math.sin(time * 4) * 4;
+  // A faint golden shimmer on the surface hints where it's hidden.
+  if (state === 'play' && pac.mode === 'normal' && frame % 24 === 0) {
+    const p = new THREE.Vector3(wx(treasure.x) + (Math.random() - 0.5) * 2.4, 0.08, wz(treasure.y) + (Math.random() - 0.5) * 2.4);
+    spawn(foam, p, new THREE.Vector3(0, 0.012, 0), 0.07, 50, {color: GOLD, gravity: -0.0002});
+  }
+}
+
+const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.03, 1.8, 8).translate(0, 0.9, 0), new THREE.MeshStandardMaterial({color: 0x7a4a22, roughness: 0.6}));
+rod.position.set(0.5, 0.7, 0);
+rod.rotation.set(0.7, 0, -0.35);
+rod.visible = false;
+pacV.group.add(rod);
+const fishLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.85}));
+fishLine.frustumCulled = false;
+fishLine.visible = false;
+scene.add(fishLine);
+const flashEl = document.getElementById('flash');
+
 // ---------------------------------------------------------------- post-processing
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.5, 0.95));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.3, 0.5, 0.95));
 composer.addPass(new OutputPass());
 
 addEventListener('resize', () => {
@@ -1887,7 +2109,14 @@ function updatePacView(dt) {
   if (pac.mode === 'surf') {
     pacV.rider.rotation.z += -pac.drift * 0.4;
     pacV.rider.rotation.x += 0.25;
-    if (moving) splash(new THREE.Vector3(px - pac.drift * 0.6, 0, pz - 0.8), 3, 0.1);
+    if (pac.air > 0) {
+      const k = 1 - pac.air / AIR_TIME;
+      pacV.group.position.y += 2.6 * Math.sin(Math.PI * k);
+      if (pac.trick === 'spin') pacV.rider.rotation.y += k * Math.PI * 2;
+      else pacV.rider.rotation.x -= k * Math.PI * 2;
+    } else if (moving) {
+      splash(new THREE.Vector3(px - pac.drift * 0.6, 0, pz - 0.8), 3, 0.1);
+    }
   }
   if (pac.mode === 'dive' || pacDepth < -0.5) {
     pacV.rider.rotation.x += 0.2;
@@ -1945,7 +2174,7 @@ function updateGirlfriend(dt) {
   if (last.distanceTo(tmpV.set(head.x, 0, head.z)) > 0.08) trail.push(new THREE.Vector3(head.x, 0, head.z));
   if (trail.length > 400) trail.shift();
   let idx = trail.length - 1, dist = 0;
-  while (idx > 0 && dist < (gfMad > 0 ? 7 : 3.6)) {
+  while (idx > 0 && dist < (gfMad > 0 ? 7 : 3.6) + gfFat * 1.4) {
     const stepLen = trail[idx].distanceTo(trail[idx - 1]);
     if (stepLen > 3) break;
     dist += stepLen;
@@ -1962,6 +2191,20 @@ function updateGirlfriend(dt) {
     hiccup(gfV.group.position, 1);
   }
   if (discoTime > 0) gfV.rider.position.y += Math.abs(Math.sin(time * 8 + 1)) * 0.3;
+
+  // Every stingray she eats shows up on her waistline.
+  const wide = 1 + gfFat * 0.17;
+  gfV.body.scale.x += (wide - gfV.body.scale.x) * Math.min(1, dt * 3);
+  gfV.body.scale.z = gfV.body.scale.x;
+  gfV.body.scale.y = 1 + (gfV.body.scale.x - 1) * 0.3;
+  gfV.board[0].scale.x = 0.5 * (1 + (gfV.body.scale.x - 1) * 0.6);
+  gfV.glam.forEach(m => { m.visible = gfGlam; });
+  gfV.mat.emissive.set(gfGlam ? 0x3a1428 : 0x000000);
+  if (gfGlam && frame % 7 === 0) {
+    const a = Math.random() * Math.PI * 2;
+    const p = gfV.group.position.clone().add(new THREE.Vector3(Math.cos(a) * 0.9, 0.4 + Math.random() * 1.2, Math.sin(a) * 0.9));
+    spawn(foam, p, new THREE.Vector3(0, 0.01, 0), 0.05, 40, {color: GOLD, gravity: -0.0002});
+  }
 
   // Mad at him for smoking: red-faced, scowling, fuming.
   const mad = gfMad > 0;
@@ -1987,7 +2230,7 @@ function updateGirlfriend(dt) {
       h.position.copy(gfV.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 1.2 + Math.random(), (Math.random() - 0.5) * 1.5));
     }
   }
-  if (state === 'play' && !mad && frame % 30 === 0) {
+  if (state === 'play' && !mad && frame % (gfGlam ? 25 : 60) === 0) {
     const h = newHeart();
     if (h) {
       h.visible = true;
@@ -2014,7 +2257,9 @@ function hiccup(pos, seed) {
   }
 }
 
+let hookedPos = null;
 function updateRays(dt) {
+  hookedPos = null;
   const flashing = frightTime < 120 && Math.floor(frame / 10) % 2;
   ghosts.forEach((g, i) => {
     const v = rayViews[i];
@@ -2028,6 +2273,18 @@ function updateRays(dt) {
     v.group.position.y += lift * 9;
     v.group.rotation.y += lift * time * 6;
     v.group.scale.setScalar(1.2 * (1 - lift * 0.6));
+    if (g.hooked > 0) {
+      const k = 1 - g.hooked / HOOK_TIME, from = v.group.position.clone();
+      const pacPos = pacV.group.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+      const gfPos = gfV.group.position.clone().add(new THREE.Vector3(0, 1, 0));
+      if (k < 0.55) v.group.position.lerpVectors(from, pacPos, k / 0.55).y += Math.sin(Math.PI * k / 0.55) * 1.5;
+      else v.group.position.lerpVectors(pacPos, gfPos, (k - 0.55) / 0.45).y += Math.sin(Math.PI * (k - 0.55) / 0.45) * 3;
+      v.group.rotation.x = time * 8;
+      v.group.scale.multiplyScalar(1 - Math.max(0, (k - 0.8) / 0.2));
+      if (k < 0.55) hookedPos = v.group.position;
+    } else {
+      v.group.rotation.x = 0;
+    }
     if (beerTime > 0) {
       v.group.position.x += Math.sin(time * 2.3 + i) * 0.35;
       v.group.position.z += Math.cos(time * 1.9 + i) * 0.35;
@@ -2110,7 +2367,7 @@ function updateWaveView() {
   if (!wave) return;
   const z = wz(wave.row);
   waveMesh.position.z = z;
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 6; i++) {
     const p = new THREE.Vector3((Math.random() - 0.5) * (WAVE_SPAN - 10), waveMesh.scale.y * 0.95, z + 0.3);
     spawn(foam, p, new THREE.Vector3((Math.random() - 0.5) * 0.02, 0.03 + Math.random() * 0.03, 0.05 + Math.random() * 0.04), 0.1 + Math.random() * 0.1, 30 + Math.random() * 20);
   }
@@ -2150,6 +2407,11 @@ function updateCamera(dt) {
   if (jointTime > 0) pos.add(new THREE.Vector3(Math.sin(time * 0.8) * 1.2, Math.sin(time * 0.5) * 0.6, 0));
   camPos.lerp(pos, 1 - Math.exp(-dt * (state === 'travel' ? 1.2 : close ? 6 : 2.8)));
   camLook.lerp(look, 1 - Math.exp(-dt * (close ? 9 : 4.2)));
+  const fov = pac.mode === 'surf' && state === 'play' ? 62 : 45;
+  if (Math.abs(camera.fov - fov) > 0.05) {
+    camera.fov += (fov - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+  }
   camera.position.copy(camPos);
   camera.lookAt(camLook);
   if (beerTime > 0) camera.rotateZ(Math.sin(time * 1.4) * 0.07);
@@ -2185,8 +2447,10 @@ function updateOverlay() {
   setText('diveCount', pac.mode === 'dive' ? `${Math.max(0, Math.ceil(pac.dive / 60))}s` : pac.diveCool > 0 ? `${Math.ceil(pac.diveCool / 60)}s` : 'X');
   $('diveBtn').disabled = state !== 'play' || pac.mode !== 'normal' || pac.diveCool > 0;
   const catchable = state === 'play' && pac.mode === 'normal' && wave && wave.row > rpos(pac).y - 3 && wave.row < rpos(pac).y + 1.5;
-  $('surfBtn').disabled = !catchable;
-  $('surfBtn').classList.toggle('pulse', !!catchable);
+  $('surfBtn').disabled = !(state === 'play' && pac.mode === 'normal' && (wave || waveWarned));
+  $('surfBtn').classList.toggle('pulse', !!catchable || (pac.wantsSurf && pac.mode === 'normal'));
+  setText('fishCount', pac.fishCool > 30 ? `${Math.ceil(pac.fishCool / 60)}s` : 'G');
+  $('fishBtn').disabled = state !== 'play' || pac.mode !== 'normal' || pac.fishCool > 0;
   const bubble = $('speech');
   bubble.style.opacity = speechTime > 0 && gfV.group.visible && state !== 'over' ? 1 : 0;
   setText('speech', speech);
@@ -2229,9 +2493,13 @@ function steer(d) {
     d = d === UP ? f : d === DOWN ? {x: -f.x, y: -f.y} : d === LEFT ? {x: f.y, y: -f.x} : {x: -f.y, y: f.x};
   }
   if (beerTime > 0) {
-    d = Math.random() < 0.25 ? DIRS[Math.floor(Math.random() * 4)] : {x: -d.x, y: -d.y};
+    d = Math.random() < 0.1 ? DIRS[Math.floor(Math.random() * 4)] : {x: -d.x, y: -d.y};
   }
-  if (pac.mode === 'surf') { pac.drift = d.y ? 0 : d.x; return; }
+  if (pac.mode === 'surf') {
+    if (d.y) doTrick(d.y > 0 ? 'spin' : 'flip'); // forward (south) is ↑ on the wave
+    else pac.drift = d.x;
+    return;
+  }
   queued = d;
 }
 function toggleCamera() {
@@ -2248,10 +2516,11 @@ document.addEventListener('keydown', e => {
   else if (k === 'j') useItem('joint');
   else if (k === 'x' || k === 'shift') startDive();
   else if (k === 'f') catchWave();
+  else if (k === 'g') castLine();
   else return;
   e.preventDefault();
 });
-for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave]]) {
+for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave], ['fishBtn', castLine]]) {
   $(id).addEventListener('click', e => { e.stopPropagation(); fn(); $(id).blur(); });
 }
 
@@ -2296,6 +2565,17 @@ function animate() {
   updateRays(dt);
   updateCrabs(dt);
   updateItemViews();
+  updateStarView();
+  updateTreasureView();
+  rod.visible = ghosts.some(g => g.hooked > 0);
+  fishLine.visible = !!hookedPos;
+  if (hookedPos) {
+    const tip = rod.localToWorld(new THREE.Vector3(0, 1.8, 0));
+    fishLine.geometry.attributes.position.setXYZ(0, tip.x, tip.y, tip.z);
+    fishLine.geometry.attributes.position.setXYZ(1, hookedPos.x, hookedPos.y, hookedPos.z);
+    fishLine.geometry.attributes.position.needsUpdate = true;
+  }
+  flashEl.style.opacity = flashTime > 0 ? (flashTime / 40) * 0.85 : 0;
   updateWaveView();
   updatePool(foam);
   updatePool(smoke);
@@ -2324,6 +2604,14 @@ window.pacSurf = {
   clear() { for (const row of dots) row.fill(''); dotsLeft = 0; state = 'clear'; timer = 1; },
   warp(n) { level = n; applyDestination(); startLevel(); },
   dive() { startDive(); },
+  fish() { castLine(); },
+  tp(x, y) { pac.x = x; pac.y = y; pac.p = 0; pac.dir = NONE; },
+  go(dx, dy) { queued = {x: dx, y: dy}; },
+  star() { const [x, y] = randomTile(2); starfish = {x, y, t: 0}; },
+  starAt(x, y) { starfish = {x, y, t: 0}; },
+  get treasure() { return treasure; },
+  get gf() { return {gfFat, gfGlam, gfMad}; },
+  rays() { return ghosts.map(g => ({state: g.state, hooked: g.hooked, ...rpos(g)})); },
   surf() { catchWave(); },
   event(name) { triggerEvent(name); },
   spawnItem(type) { const [x, y] = randomTile(2); items.push({type, x, y, t: 0}); },
