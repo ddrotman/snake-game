@@ -34,6 +34,10 @@
   #controls .group { flex-wrap: wrap; max-width: calc(100vw - 150px); }
   #controls button.pulse { animation: pulse 0.6s ease-in-out infinite alternate; border-color: #7ff; }
   @keyframes pulse { from { box-shadow: 0 0 0 rgba(127, 255, 255, 0); } to { box-shadow: 0 0 18px rgba(127, 255, 255, 0.9); } }
+  #controls button i { font-style: normal; font-size: 11px; opacity: 0.7; margin-right: 5px; padding: 1px 5px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 5px; }
+  #air { position: fixed; top: 96px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 14px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  #air div { width: 140px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+  #air i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd23f 30%, #5ad1ff 60%); border-radius: 4px; }
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
   #speech { position: fixed; transform: translate(-50%, -100%); padding: 8px 14px; border-radius: 16px; background: #fff; color: #c2002f; font-weight: 800; font-size: 15px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.25s; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); }
   #speech::after { content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); border: 8px solid transparent; border-bottom: 0; border-top-color: #fff; }
@@ -53,18 +57,20 @@
 <div id="toast" class="glass"></div>
 <div id="speech"></div>
 <div id="flash"></div>
+<div id="air" class="glass"><span>🫧 Air</span><div><i id="airFill"></i></div></div>
 <div id="overlay" class="dim"><h1 id="title">Loading…</h1><div id="sub"></div></div>
 <div id="controls">
   <div class="group">
-    <button id="beerBtn" class="glass">🍺 Beer <b id="beerCount">0</b></button>
-    <button id="jointBtn" class="glass">🌿 Joint <b id="jointCount">0</b></button>
-    <button id="diveBtn" class="glass">🤿 Dive <b id="diveCount">X</b></button>
-    <button id="surfBtn" class="glass">🏄 Surf <b>F</b></button>
-    <button id="fishBtn" class="glass">🎣 Fish <b id="fishCount">G</b></button>
+    <button id="beerBtn" class="glass"><i>W</i>🍺 <b id="beerCount">0</b></button>
+    <button id="jointBtn" class="glass"><i>A</i>🌿 <b id="jointCount">0</b></button>
+    <button id="diveBtn" class="glass"><i>S</i>🤿 <b id="diveCount">3</b></button>
+    <button id="surfBtn" class="glass"><i>D</i>🏄 Surf</button>
+    <button id="fishBtn" class="glass"><i>X</i>🎣 <b id="fishCount">Fish</b></button>
+    <button id="trapBtn" class="glass"><i>T</i>🪤 Trap</button>
   </div>
   <button id="view" class="glass">Camera: Follow</button>
 </div>
-<div id="help">Arrows move · F surf (↑ ↓ tricks) · X dive · G fish · B beer · J joint · Space pause · C camera</div>
+<div id="help">Arrows steer · W beer · A joint · S dive · D surf (↑ ↓ tricks) · X fish · T trap · Space pause · C camera</div>
 
 <script>
   // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
@@ -94,6 +100,15 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ---------------------------------------------------------------- maps & destinations
 // # wall, . pearl, o big pearl, - stingray-pen gate, space = empty water
+const PEN_ROWS = [
+  '####.###.#.###.####',
+  '####.#.......#.####',
+  '####.#.##-##.#.####',
+  ' ......#   #...... ',
+  '####.#.#####.#.####',
+  '####.#.......#.####',
+  '####.#.#####.#.####',
+];
 const MAPS = {
   A: [
     '###################',
@@ -102,13 +117,7 @@ const MAPS = {
     '#.................#',
     '#.##.#.#####.#.##.#',
     '#....#...#...#....#',
-    '####.###.#.###.####',
-    '####.#.......#.####',
-    '####.#.##-##.#.####',
-    ' ......#   #...... ',
-    '####.#.#####.#.####',
-    '####.#.......#.####',
-    '####.#.#####.#.####',
+    ...PEN_ROWS,
     '#........#........#',
     '#.##.###.#.###.##.#',
     '#o.#..... .....#.o#',
@@ -125,13 +134,7 @@ const MAPS = {
     '#.................#',
     '#.##.#..###..#.##.#',
     '#....#...#...#....#',
-    '####.###.#.###.####',
-    '####.#.......#.####',
-    '####.#.##-##.#.####',
-    ' ......#   #...... ',
-    '####.#.#####.#.####',
-    '####.#.......#.####',
-    '####.#.#####.#.####',
+    ...PEN_ROWS,
     '#....#.......#....#',
     '#.##.#.#####.#.##.#',
     '#o....... .......o#',
@@ -141,16 +144,64 @@ const MAPS = {
     '#.................#',
     '###################',
   ],
+  C: [
+    '###################',
+    '#.................#',
+    '#.#.###.#.#.###.#.#',
+    '#.#.....#.#.....#.#',
+    '#o..#.##...##.#..o#',
+    '####.....#.....####',
+    ...PEN_ROWS,
+    '#....#.......#....#',
+    '#.##.#.##.##.#.##.#',
+    '#o....... .......o#',
+    '#.###.#.###.#.###.#',
+    '#.....#.....#.....#',
+    '#.###.#.#.#.#.###.#',
+    '#.................#',
+    '###################',
+  ],
+  D: [
+    '###################',
+    '#o...............o#',
+    '#.#.#.#.###.#.#.#.#',
+    '#.................#',
+    '#.##.#.#####.#.##.#',
+    '#....#...#...#....#',
+    ...PEN_ROWS,
+    '#........#........#',
+    '#.#.##.#.#.#.##.#.#',
+    '#o....... .......o#',
+    '##.#.#.#####.#.#.##',
+    '#....#...#...#....#',
+    '#.######.#.######.#',
+    '#.................#',
+    '###################',
+  ],
 };
+// Each stop has its own maze, stone, neon, sky and swell.
 const DESTINATIONS = [
-  {name: 'Malibu, California', map: 'A', elevation: 17, azimuth: 200, turbidity: 6, rayleigh: 1.6, water: 0x0a5f6e, sun: 0xffe0b5, exposure: 0.5, waveEvery: 16, waveHeight: 1.8},
-  {name: 'Waikiki, Hawaii', map: 'B', elevation: 48, azimuth: 165, turbidity: 3, rayleigh: 1.1, water: 0x0b8790, sun: 0xfff4e2, exposure: 0.32, waveEvery: 13, waveHeight: 2.0},
-  {name: 'Uluwatu, Bali', map: 'A', elevation: 7, azimuth: 190, turbidity: 10, rayleigh: 3, water: 0x0a4152, sun: 0xffa060, exposure: 0.6, waveEvery: 11, waveHeight: 2.2, beach: true},
-  {name: 'Nazaré, Portugal', map: 'B', elevation: 10, azimuth: 235, turbidity: 16, rayleigh: 0.9, water: 0x113c48, sun: 0xdfe4ff, exposure: 0.55, waveEvery: 8, waveHeight: 2.7},
+  {name: 'Malibu, California', map: 'A', elevation: 17, azimuth: 200, turbidity: 6, rayleigh: 1.6, water: 0x0a5f6e, sun: 0xffe0b5, exposure: 0.5, waveHeight: 2.4, wall: 0xffffff, trim: 0x2b5cff},
+  {name: 'Waikiki, Hawaii', map: 'B', elevation: 48, azimuth: 165, turbidity: 3, rayleigh: 1.1, water: 0x0b8790, sun: 0xfff4e2, exposure: 0.32, waveHeight: 2.7, wall: 0x4a4644, trim: 0x18e0ff},
+  {name: 'Uluwatu, Bali', map: 'C', elevation: 7, azimuth: 190, turbidity: 10, rayleigh: 3, water: 0x0a4152, sun: 0xffa060, exposure: 0.6, waveHeight: 2.9, beach: true, wall: 0xffc0b0, trim: 0xff3fb4},
+  {name: 'Nazaré, Portugal', map: 'D', elevation: 10, azimuth: 235, turbidity: 16, rayleigh: 0.9, water: 0x113c48, sun: 0xdfe4ff, exposure: 0.55, waveHeight: 3.4, wall: 0xa8b4c2, trim: 0xe8f0ff},
 ];
 const W = 19, H = 21;
 let MAP = MAPS.A;
 const dest = () => DESTINATIONS[(level - 1) % DESTINATIONS.length];
+// Difficulty by level: starts gentle, then everything speeds up.
+function levelCfg() {
+  const L = level - 1;
+  return {
+    pac: Math.min(0.13, 0.085 + 0.007 * L),
+    ray: Math.min(0.12, 0.058 + 0.008 * L),
+    rays: level === 1 ? 1 : level < 4 ? 2 : 3,
+    crabs: level < 3 ? 1 : 2,
+    fright: Math.max(4, 9 - L) * 60,
+    waveEvery: Math.max(8, 12 - L) * 60,
+    waveSpeed: Math.min(0.085, 0.06 + 0.005 * L),
+  };
+}
 
 // ---------------------------------------------------------------- game logic
 const UP = {x: 0, y: -1}, LEFT = {x: -1, y: 0}, DOWN = {x: 0, y: 1}, RIGHT = {x: 1, y: 0}, NONE = {x: 0, y: 0};
@@ -160,19 +211,22 @@ const HOME = {x: 9, y: 9}, EXIT = {x: 9, y: 7};
 const RAYS = [
   {name: 'blinky', color: 0xff3b30, start: {x: 9, y: 7}, dir: LEFT, corner: {x: W - 2, y: -2}, release: 0},
   {name: 'pinky', color: 0xff8ce8, start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 5},
+  {name: 'inky', color: 0x2ff3ff, start: {x: 8, y: 9}, dir: RIGHT, corner: {x: W - 1, y: H + 1}, release: 9},
 ];
 const BEER_TIME = 420, JOINT_TIME = 420, RED_EYES_EXTRA = 240;
-const DIVE_TIME = 240, DIVE_COOLDOWN = 480, AIR_TIME = 48, HOOK_TIME = 70;
+const DIVE_TIME = 420, DIVE_COOLDOWN = 60, AIR_TIME = 48, HOOK_TIME = 70;
+const FIRE_TIME = 480, FIRE_POINTS = 1200, SHARK_FISH = 10;
 
 let dots, dotsLeft, pac, queued, ghosts, crabs, items, popups, wave;
 let score = 0, lives = 5, level = 1, state = 'start', timer = 0, paused = false;
 let frame = 0, roundTime = 0, modeIndex = 0, modeTime = 0, frightTime = 0, combo = 0, freeze = 0;
-let beerTime = 0, jointTime = 0, redEyes = 0, waveClock = 0, waveWarned = false, itemClock = 0;
-let inv = {beer: 1, joint: 1};
+let beerTime = 0, jointTime = 0, redEyes = 0, waveClock = 0, waveWarned = false, nextWaveDir = DOWN, itemClock = 0;
+let inv = {beer: 1, joint: 1, dives: 3};
 let toastMsg = '', toastTime = 0, trailReset = true;
 let whale = null, ufo = null, discoTime = 0, eventClock = 0, nextEventAt = 1800, lastEvent = '';
-let gfMad = 0, gfForgive = 0, speech = '', speechTime = 0, gfFat = 0, gfGlam = false;
-let starfish = null, starClock = 0, treasure = null, flashTime = 0;
+let gfMad = 0, gfForgive = 0, speech = '', speechTime = 0, gfFish = 0, gfShark = false, gfGlam = false;
+let starfish = null, starClock = 0, treasures = [], coins = [], traps = [], flashTime = 0;
+let fireTime = 0, fireCool = 0, pointsLog = [];
 let best = 0;
 try { best = Number(localStorage.getItem('pacBest')) || 0; } catch (e) {}
 
@@ -181,6 +235,8 @@ const opposite = (a, b) => (a.x || a.y) && a.x === -b.x && a.y === -b.y;
 const rpos = e => ({x: e.x + e.dir.x * e.p, y: e.y + e.dir.y * e.p});
 const timeScale = () => jointTime > 0 ? 0.45 : 1;
 const toast = (msg, frames = 150) => { toastMsg = msg; toastTime = frames; };
+const gfFat = () => Math.min(5, Math.floor(gfFish / 2));
+const inPen = (x, y) => y >= 8 && y <= 10 && x >= 7 && x <= 11;
 
 function open(x, y, d, doorOK) {
   const nx = (x + d.x + W) % W, ny = y + d.y;
@@ -194,7 +250,7 @@ function randomTile(minDist) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (MAP[y][x] === '#' || MAP[y][x] === '-') continue;
-      if (y >= 8 && y <= 10 && x >= 7 && x <= 11) continue;
+      if (inPen(x, y)) continue;
       if (y === 9 && (x === 0 || x === W - 1)) continue;
       if ((x - pac.x) ** 2 + (y - pac.y) ** 2 < minDist * minDist) continue;
       tiles.push([x, y]);
@@ -203,25 +259,38 @@ function randomTile(minDist) {
   return tiles[Math.floor(Math.random() * tiles.length)];
 }
 
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
 function loadDots() {
   dots = MAP.map(row => row.split('').map(c => (c === '.' || c === 'o') ? c : ''));
   dotsLeft = dots.flat().filter(Boolean).length;
-  // Hide a treasure chest on the seafloor under an inner wall next to open water.
-  const spots = [];
+  // Treasure chests sit under inner walls next to open water; coins are scattered at swimming depth.
+  const chestSpots = [], coinSpots = [];
   for (let y = 1; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
-      if (MAP[y][x] !== '#' || inPen(x, y) || (y >= 7 && y <= 11 && x >= 6 && x <= 12)) continue;
-      if (DIRS.some(d => MAP[y + d.y][x + d.x] !== '#' && MAP[y + d.y][x + d.x] !== '-')) spots.push({x, y});
+      if (inPen(x, y) || MAP[y][x] === '-') continue;
+      if (MAP[y][x] === '#') {
+        coinSpots.push({x, y});
+        if (!(y >= 7 && y <= 11 && x >= 6 && x <= 12) && DIRS.some(d => MAP[y + d.y][x + d.x] !== '#' && MAP[y + d.y][x + d.x] !== '-')) chestSpots.push({x, y});
+      }
     }
   }
-  treasure = {...spots[Math.floor(Math.random() * spots.length)], found: false};
+  shuffle(chestSpots);
+  treasures = [];
+  for (const s of chestSpots) {
+    if (treasures.length >= 3) break;
+    if (treasures.every(t => Math.abs(t.x - s.x) + Math.abs(t.y - s.y) > 6)) treasures.push({...s, found: false});
+  }
+  coins = shuffle(coinSpots).filter(c => !treasures.some(t => t.x === c.x && t.y === c.y)).slice(0, 30).map(c => ({...c, taken: false}));
+  traps = [];
 }
 
 function resetPositions() {
-  pac = {x: 9, y: 15, dir: NONE, face: LEFT, p: 0, surge: 0, stun: 0, crabSafe: 0, rayBlind: 0, mode: 'normal', dive: 0, diveCool: 0, sx: 0, drift: 0, lastRow: 0, wantsSurf: false, air: 0, trick: '', combo: 0, fishCool: 0};
+  const cfg = levelCfg();
+  pac = {x: 9, y: 15, dir: NONE, face: LEFT, p: 0, surge: 0, surgeDir: DOWN, stun: 0, crabSafe: 0, rayBlind: 0, mode: 'normal', dive: 0, diveCool: 0, sl: 0, drift: 0, lastPos: 0, wantsSurf: false, air: 0, trick: '', combo: 0, fishCool: 0};
   queued = LEFT;
-  ghosts = RAYS.map(g => ({...g, x: g.start.x, y: g.start.y, p: 0, state: g.release ? 'house' : 'active', fright: false, abducted: 0, hooked: 0}));
-  crabs = Array.from({length: level < 3 ? 1 : 2}, () => {
+  ghosts = RAYS.slice(0, cfg.rays).map(g => ({...g, x: g.start.x, y: g.start.y, p: 0, state: g.release ? 'house' : 'active', fright: false, abducted: 0, hooked: 0}));
+  crabs = Array.from({length: cfg.crabs}, () => {
     const [x, y] = randomTile(6);
     return {x, y, dir: NONE, p: 0, flung: 0};
   });
@@ -232,7 +301,8 @@ function resetPositions() {
   starClock = 0;
   whale = ufo = null;
   roundTime = modeIndex = modeTime = frightTime = freeze = 0;
-  beerTime = jointTime = waveClock = itemClock = discoTime = eventClock = 0;
+  beerTime = jointTime = waveClock = itemClock = discoTime = eventClock = fireTime = 0;
+  pointsLog = [];
   nextEventAt = 2400 + Math.random() * 900;
   waveWarned = false;
   trailReset = true;
@@ -240,18 +310,31 @@ function resetPositions() {
 
 function startLevel() { loadDots(); resetPositions(); state = 'ready'; timer = 120; }
 function newGame() {
-  score = 0; lives = 5; level = 1; gfFat = 0; gfGlam = false; paused = false; redEyes = 0; gfMad = 0; speechTime = 0;
-  inv = {beer: 1, joint: 1};
+  score = 0; lives = 5; level = 1; gfFish = 0; gfShark = false; gfGlam = false; paused = false; redEyes = 0; gfMad = 0; speechTime = 0; fireCool = 0;
+  inv = {beer: 1, joint: 1, dives: 3};
   applyDestination();
   startLevel();
 }
 
 function addScore(n) {
+  if (fireTime > 0) n *= 3;
   score += n;
   if (score > best) {
     best = score;
     try { localStorage.setItem('pacBest', best); } catch (e) {}
   }
+  // A burst of points in a few seconds sets you on fire.
+  pointsLog.push([frame, n]);
+  pointsLog = pointsLog.filter(([f]) => frame - f < 300);
+  if (fireTime === 0 && fireCool === 0 && state === 'play' && pointsLog.reduce((s, [, p]) => s + p, 0) >= FIRE_POINTS) ignite();
+}
+
+function ignite() {
+  fireTime = FIRE_TIME;
+  fireCool = FIRE_TIME + 900;
+  pointsLog = [];
+  frighten();
+  toast('🔥 ON FIRE! Triple points, extra speed, and the stingrays are terrified', 200);
 }
 
 const say = (line, frames = 160) => { speech = line; speechTime = frames; };
@@ -266,42 +349,55 @@ function useItem(type) {
   } else {
     jointTime = JOINT_TIME;
     redEyes = JOINT_TIME + RED_EYES_EXTRA;
-    gfMad = JOINT_TIME + 240;
+    if (!gfShark) {
+      gfMad = JOINT_TIME + 240;
+      say(MAD_LINES[Math.floor(Math.random() * MAD_LINES.length)]);
+    }
     toast('🌿 Duuude… everything slows down');
-    say(MAD_LINES[Math.floor(Math.random() * MAD_LINES.length)]);
   }
 }
 
-// Dive under the walls for a few seconds; nothing can touch you down there.
+// Dive under the walls; your air is limited and every dive uses a charge (goggles give more).
 function startDive() {
   if (state !== 'play' || paused || pac.mode !== 'normal' || pac.diveCool > 0) return;
+  if (!inv.dives) { toast('🤿 Out of dives! Grab some goggles 🥽', 90); return; }
+  inv.dives--;
   pac.mode = 'dive';
   pac.dive = DIVE_TIME;
   pac.surge = 0;
   pac.stun = 0;
-  toast('🤿 Diving! Swim under the walls', 90);
+  toast('🤿 Diving! Swim under the walls for coins and treasure', 100);
 }
 
-// Catch the set wave as it reaches you and ride the crest over the maze.
-// Press F any time a wave is on its way: you paddle out and pop up when it reaches you.
+// ---- waves roll in from any side; you can ride them across the maze
+const waveSpan = () => (wave.axis === 'y' ? H : W);
+const along = (p, w = wave) => (w.axis === 'y' ? p.y : p.x);
+const crossed = (prev, cur, a, sign) => (sign > 0 ? prev < a && cur >= a : prev > a && cur <= a);
+const SIDE_NAMES = {'0,1': 'north', '0,-1': 'south', '1,0': 'west', '-1,0': 'east'};
+
+function spawnWave(dir) {
+  const axis = dir.y ? 'y' : 'x', sign = dir.x + dir.y, span = axis === 'y' ? H : W;
+  wave = {dir, axis, sign, pos: sign > 0 ? -5 : span + 4};
+}
+
+// Press D any time a wave is on its way: you paddle out and pop up when it reaches you.
 function catchWave() {
   if (state !== 'play' || paused || pac.mode !== 'normal') return;
-  const rp = rpos(pac);
-  if (wave && wave.row > rp.y - 1.5 && wave.row < rp.y + 2.5) { startSurf(); return; }
-  if ((wave && wave.row < rp.y) || waveWarned) {
-    pac.wantsSurf = true;
-    toast('🏄 Paddling out… you’ll catch it when it gets here', 100);
-  } else {
-    toast('🌊 No wave yet. Watch for the warning!', 70);
+  if (wave) {
+    const gap = wave.sign * (along(rpos(pac)) - wave.pos);
+    if (gap > -2.5 && gap < 1.5) { startSurf(); return; }
+    if (gap > 0) { pac.wantsSurf = true; toast('🏄 Paddling out… you’ll pop up when it reaches you', 100); return; }
   }
+  if (waveWarned) { pac.wantsSurf = true; toast('🏄 Paddling out… you’ll pop up when it reaches you', 100); return; }
+  toast('🌊 No wave yet. Watch for the warning!', 70);
 }
 
 function startSurf() {
   const rp = rpos(pac);
   pac.mode = 'surf';
-  pac.sx = rp.x;
+  pac.sl = wave.axis === 'y' ? rp.x : rp.y;
   pac.drift = 0;
-  pac.lastRow = wave.row;
+  pac.lastPos = wave.pos;
   pac.surge = pac.stun = pac.air = pac.combo = 0;
   pac.wantsSurf = false;
   toast('🏄 Riding! ← → carve · ↑ aerial 360 · ↓ backflip', 150);
@@ -315,19 +411,21 @@ function doTrick(kind) {
 }
 
 function landSurf() {
-  // Drop off the back of the wave onto the nearest open water near the bottom.
+  // Drop off the back of the wave onto the nearest open water at the far side.
+  const w = wave || {axis: 'y', sign: 1};
+  const edge = w.sign > 0 ? (w.axis === 'y' ? H : W) - 2 : 1;
+  const tx = w.axis === 'y' ? pac.sl : edge, ty = w.axis === 'y' ? edge : pac.sl;
   let pick = [9, 15], pickDist = Infinity;
   for (let y = 1; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
-      if (MAP[y][x] === '#' || MAP[y][x] === '-' || (y >= 8 && y <= 10 && x >= 7 && x <= 11)) continue;
-      const d = (x - pac.sx) ** 2 + (y - (H - 2)) ** 2 * 0.5;
+      if (MAP[y][x] === '#' || MAP[y][x] === '-' || inPen(x, y)) continue;
+      const d = (x - tx) ** 2 + (y - ty) ** 2;
       if (d < pickDist) { pickDist = d; pick = [x, y]; }
     }
   }
   [pac.x, pac.y] = pick;
   pac.p = 0;
   pac.dir = NONE;
-  pac.face = DOWN;
   queued = NONE;
   pac.mode = 'normal';
   pac.rayBlind = pac.crabSafe = 90;
@@ -368,18 +466,35 @@ function updateStarfish() {
   }
 }
 
-function findTreasure() {
-  treasure.found = true;
+function findTreasure(t) {
+  t.found = true;
   nukeEnemies();
   addScore(1000);
   gfGlam = true;
   gfMad = 0;
   gfForgive = 1;
   say('Oh. My. God. Is that for ME?! 💎', 200);
-  toast('💰 TREASURE! Enemies wiped out and your girlfriend is glowing', 200);
+  const left = treasures.filter(c => !c.found).length;
+  toast(`💰 TREASURE! Enemies wiped out${left ? ` · ${left} more chest${left > 1 ? 's' : ''} down there` : ' · you found them all!'}`, 200);
 }
 
-const FEED_LINES = ['Mmm, stingray sashimi! 😋', 'Ooh, another one? Okay…', 'I’m getting kinda full…', 'Babe, I can’t feel my legs 😩', 'STOP FEEDING ME 🐡', 'I can barely paddle…'];
+// ---- feeding her: stingrays you fish, and fish from the traps you set
+const FEED_LINES = ['Mmm, sashimi! 😋', 'Ooh, another one? Okay…', 'I’m getting kinda full…', 'Babe, I can’t feel my legs 😩', 'STOP FEEDING ME 🐡', 'I can barely paddle…'];
+function gfEat(n, points) {
+  gfFish += n;
+  addScore(points);
+  gfMad = 0;
+  gfForgive = 1;
+  if (!gfShark && gfFish > SHARK_FISH) {
+    gfShark = true;
+    say('RAWRRR 🦈', 200);
+    toast('🦈 She ate too much and turned into a SHARK! Don’t run into her', 220);
+    flashTime = 30;
+  } else if (!gfShark) {
+    say(FEED_LINES[Math.min(FEED_LINES.length - 1, Math.max(0, gfFat() - 1))], 170);
+  }
+}
+
 // Cast a line at the nearest stingray, reel it in, and feed it to her.
 function castLine() {
   if (state !== 'play' || paused || pac.mode !== 'normal' || pac.fishCool > 0) return;
@@ -397,12 +512,19 @@ function castLine() {
   popups.push({x: gp.x, y: gp.y, text: '🎣 HOOKED!', t: 50});
 }
 
-function feedGirlfriend() {
-  gfFat = Math.min(5, gfFat + 1);
-  addScore(300);
-  gfMad = 0;
-  gfForgive = 1;
-  say(FEED_LINES[Math.min(FEED_LINES.length - 1, gfFat - 1)], 170);
+// Drop a fish trap where you are; it fills up over time and she snacks on it when she swims by.
+function placeTrap() {
+  if (state !== 'play' || paused || pac.mode !== 'normal') return;
+  if (traps.some(t => t.x === pac.x && t.y === pac.y)) return;
+  if (traps.length >= 3) traps.shift();
+  traps.push({x: pac.x, y: pac.y, fish: 0, clock: 0});
+  toast('🪤 Fish trap set! She’ll snack on it when she swims past', 100);
+}
+
+function updateTraps() {
+  for (const t of traps) {
+    if (t.fish < 3 && ++t.clock >= 240) { t.clock = 0; t.fish++; }
+  }
 }
 
 function eatDot(x, y) {
@@ -438,15 +560,15 @@ function reverse(e) {
 }
 
 function pacSpeed() {
-  let s = Math.min(0.13, 0.1 + 0.004 * (level - 1));
+  let s = levelCfg().pac;
   if (beerTime > 0) s *= 1.35;
   if (jointTime > 0) s *= 0.7;
+  if (fireTime > 0) s *= 1.25;
   if (pac.surge > 0) s *= 1.6;
-  if (pac.mode === 'dive') s *= 0.9;
-  return s * (1 + 0.12 * Math.sin(frame * 0.045 + pac.y * 0.7)); // the swell surges and stalls you
+  if (pac.mode === 'dive') s *= 0.7;
+  return s * (1 + 0.1 * Math.sin(frame * 0.045 + pac.y * 0.7)); // the swell surges and stalls you
 }
 
-const inPen = (x, y) => y >= 8 && y <= 10 && x >= 7 && x <= 11;
 // Underwater you can pass beneath inner walls, but not the outer wall or the stingray pen.
 function openDive(x, y, d) {
   const nx = (x + d.x + W) % W, ny = y + d.y;
@@ -480,20 +602,26 @@ function updateSurf() {
     pac.combo++;
     const pts = 150 * pac.combo;
     addScore(pts);
-    popups.push({x: pac.sx, y: wave ? wave.row : pac.y, text: `${TRICKS[pac.trick]}${pac.combo > 1 ? ` x${pac.combo}` : ''} +${pts}`, t: 60});
+    popups.push({x: pac.x, y: pac.y, text: `${TRICKS[pac.trick]}${pac.combo > 1 ? ` x${pac.combo}` : ''} +${pts}`, t: 60});
   }
-  if (!wave || wave.row >= H - 2) { landSurf(); return; }
-  pac.sx = Math.min(W - 2, Math.max(1, pac.sx + pac.drift * 0.09));
-  const col = Math.round(pac.sx);
-  for (let r = Math.floor(pac.lastRow) + 1; r <= Math.floor(wave.row); r++) {
-    if (r >= 0 && r < H) eatDot(col, r);
+  const span = wave ? waveSpan() : H;
+  if (!wave || (wave.sign > 0 ? wave.pos >= span - 2 : wave.pos <= 1)) { landSurf(); return; }
+  const lat = wave.axis === 'y' ? W : H;
+  pac.sl = Math.min(lat - 2, Math.max(1, pac.sl + pac.drift * 0.09));
+  const l = Math.round(pac.sl);
+  // Grab every pearl the crest passes over in your lane.
+  const lo = Math.min(pac.lastPos, wave.pos), hi = Math.max(pac.lastPos, wave.pos);
+  for (let i = Math.floor(lo) + 1; i <= Math.floor(hi); i++) {
+    if (wave.axis === 'y' && i >= 0 && i < H) eatDot(l, i);
+    if (wave.axis === 'x' && i >= 0 && i < W) eatDot(i, l);
   }
-  pac.lastRow = wave.row;
-  pac.x = col;
-  pac.y = Math.min(H - 1, Math.max(0, Math.round(wave.row)));
+  pac.lastPos = wave.pos;
+  const a = Math.round(wave.pos);
+  pac.x = wave.axis === 'y' ? l : Math.min(W - 1, Math.max(0, a));
+  pac.y = wave.axis === 'y' ? Math.min(H - 1, Math.max(0, a)) : l;
   pac.p = 0;
   pac.dir = NONE;
-  pac.face = DOWN;
+  pac.face = wave.dir;
 }
 
 function updatePac() {
@@ -508,8 +636,8 @@ function updatePac() {
   }
   if (pac.surge > 0 && pac.mode === 'normal') {
     pac.surge--;
-    if (pac.dir.y === -1) reverse(pac);
-    else if (!pac.dir.x && !pac.dir.y && open(pac.x, pac.y, DOWN)) pac.dir = DOWN;
+    if (opposite(pac.dir, pac.surgeDir)) reverse(pac);
+    else if (!pac.dir.x && !pac.dir.y && open(pac.x, pac.y, pac.surgeDir)) pac.dir = pac.surgeDir;
   } else if (!pac.dir.x && !pac.dir.y) {
     if (can(pac.x, pac.y, queued)) pac.dir = queued;
   } else if (opposite(queued, pac.dir) && !(diving && pac.dive <= 0)) {
@@ -521,7 +649,13 @@ function updatePac() {
 
 function pacArrive() {
   if (pac.mode === 'dive') {
-    if (treasure && !treasure.found && pac.x === treasure.x && pac.y === treasure.y) findTreasure();
+    for (const t of treasures) if (!t.found && pac.x === t.x && pac.y === t.y) findTreasure(t);
+    for (const c of coins) {
+      if (c.taken || c.x !== pac.x || c.y !== pac.y) continue;
+      c.taken = true;
+      addScore(50);
+      popups.push({x: c.x, y: c.y, text: '🪙 +50', t: 40});
+    }
     const underWall = MAP[pac.y][pac.x] === '#';
     if (pac.dive > 0 || underWall) {
       if (pac.dive <= 0) pac.dir = escapeDir(pac.x, pac.y);
@@ -533,8 +667,8 @@ function pacArrive() {
   }
   eatDot(pac.x, pac.y);
   if (pac.surge > 0) {
-    // The wave carries you south until something solid stops you.
-    if (open(pac.x, pac.y, DOWN)) pac.dir = DOWN;
+    // The wave carries you along until something solid stops you.
+    if (open(pac.x, pac.y, pac.surgeDir)) pac.dir = pac.surgeDir;
     else { pac.dir = NONE; pac.surge = 0; pac.stun = 20; }
     return;
   }
@@ -543,7 +677,7 @@ function pacArrive() {
 }
 
 function frighten() {
-  frightTime = Math.max(4, 9 - level) * 60;
+  frightTime = levelCfg().fright;
   combo = 0;
   for (const g of ghosts) {
     if (g.state === 'active') { g.fright = true; reverse(g); }
@@ -593,14 +727,14 @@ function ghostSpeed(g) {
   let s;
   if (g.state === 'eaten') s = 0.22;
   else if (g.state === 'leaving') s = 0.07;
-  else if (g.fright || (g.y === 9 && (g.x <= 4 || g.x >= 14))) s = 0.05;
-  else s = Math.min(0.105, 0.075 + 0.004 * (level - 1));
+  else if (g.fright || (g.y === 9 && (g.x <= 4 || g.x >= 14))) s = 0.045;
+  else s = levelCfg().ray;
   return s * timeScale();
 }
 
 function updateGhost(g) {
   if (g.hooked > 0) {
-    if (--g.hooked === 0) { g.state = 'eaten'; g.fright = false; feedGirlfriend(); }
+    if (--g.hooked === 0) { g.state = 'eaten'; g.fright = false; gfEat(1, 300); }
     return;
   }
   if (g.abducted > 0) {
@@ -663,7 +797,7 @@ function checkCrabs() {
     if (c.flung) continue;
     const cp = rpos(c);
     if ((pp.x - cp.x) ** 2 + (pp.y - cp.y) ** 2 > 0.45) continue;
-    if (beerTime > 0) {
+    if (beerTime > 0 || fireTime > 0) {
       c.flung = 80;
       c.thrown = false;
       addScore(100);
@@ -676,43 +810,50 @@ function checkCrabs() {
   }
 }
 
+const ITEM_TEXT = {beer: '+1 🍺', joint: '+1 🌿', goggles: '🥽 +2 dives'};
 function updateItems() {
   items.forEach(it => it.t++);
   items = items.filter(it => it.t < 900);
-  if (++itemClock >= 540 && items.length < 2) {
+  if (++itemClock >= 480 && items.length < 3) {
     itemClock = 0;
     const [x, y] = randomTile(4);
-    if (!items.some(it => it.x === x && it.y === y)) items.push({type: Math.random() < 0.55 ? 'beer' : 'joint', x, y, t: 0});
+    const r = Math.random(), type = r < 0.35 ? 'goggles' : r < 0.7 ? 'beer' : 'joint';
+    if (!items.some(it => it.x === x && it.y === y)) items.push({type, x, y, t: 0});
   }
   if (pac.mode !== 'normal') return;
   const pp = rpos(pac);
   items = items.filter(it => {
     if (Math.abs(pp.x - it.x) + Math.abs(pp.y - it.y) > 0.6) return true;
-    inv[it.type]++;
+    if (it.type === 'goggles') inv.dives += 2;
+    else inv[it.type]++;
     addScore(100);
-    popups.push({x: it.x, y: it.y, text: it.type === 'beer' ? '+1 🍺' : '+1 🌿', t: 60});
+    popups.push({x: it.x, y: it.y, text: ITEM_TEXT[it.type], t: 60});
     return false;
   });
 }
 
 function updateWaves(ts) {
+  const cfg = levelCfg();
   if (!wave) {
-    const every = dest().waveEvery * 60;
     waveClock += ts;
-    if (waveClock >= every - 180 && !waveWarned) { waveWarned = true; toast('🌊 Wave coming! Press F to surf it'); }
-    if (waveClock >= every) { wave = {row: -5}; waveClock = 0; waveWarned = false; }
+    if (waveClock >= cfg.waveEvery - 180 && !waveWarned) {
+      waveWarned = true;
+      nextWaveDir = DIRS[Math.floor(Math.random() * 4)];
+      toast(`🌊 Wave coming from the ${SIDE_NAMES[`${nextWaveDir.x},${nextWaveDir.y}`]}! Press D to surf it`);
+    }
+    if (waveClock >= cfg.waveEvery) { spawnWave(nextWaveDir); waveClock = 0; waveWarned = false; }
     return;
   }
-  const prev = wave.row;
-  wave.row += (pac.mode === 'surf' ? 0.075 : 0.11) * ts;
-  const py = rpos(pac).y;
-  if (pac.mode === 'normal' && pac.wantsSurf && prev < py - 0.3 && wave.row >= py - 0.3) startSurf();
-  else if (pac.mode === 'normal' && prev < py && wave.row >= py) pac.surge = 34;
+  const prev = wave.pos;
+  wave.pos += wave.sign * (pac.mode === 'surf' ? cfg.waveSpeed * 0.75 : cfg.waveSpeed) * ts;
+  const a = along(rpos(pac));
+  if (pac.mode === 'normal' && pac.wantsSurf && crossed(prev, wave.pos, a - wave.sign * 0.3, wave.sign)) startSurf();
+  else if (pac.mode === 'normal' && crossed(prev, wave.pos, a, wave.sign)) { pac.surge = 34; pac.surgeDir = wave.dir; }
   for (const c of crabs) {
-    const cy = rpos(c).y;
-    if (!c.flung && prev < cy && wave.row >= cy) { c.flung = 80; c.thrown = true; }
+    if (!c.flung && crossed(prev, wave.pos, along(rpos(c)), wave.sign)) { c.flung = 80; c.thrown = true; }
   }
-  if (wave.row > H + 5 && pac.mode !== 'surf') wave = null;
+  const span = waveSpan();
+  if ((wave.sign > 0 ? wave.pos > span + 5 : wave.pos < -6) && pac.mode !== 'surf') wave = null;
 }
 
 // Random chaos: a disco party, a breaching whale that kicks up a wave, or a UFO.
@@ -727,10 +868,12 @@ function triggerEvent(forced) {
   } else if (e === 'whale') {
     whale = {t: 0, side: Math.random() < 0.5 ? -1 : 1};
     waveWarned = true;
-    toast('🐋 WHALE BREACH! Big wave coming, press F to catch it');
+    nextWaveDir = DOWN;
+    toast('🐋 WHALE BREACH! Big wave coming, press D to catch it');
   } else {
     const pp = rpos(pac);
     const targets = ghosts.filter(g => g.state === 'active' && !g.abducted);
+    if (!targets.length) return;
     const g = targets.reduce((a, b) => ((rpos(a).x - pp.x) ** 2 + (rpos(a).y - pp.y) ** 2 < (rpos(b).x - pp.x) ** 2 + (rpos(b).y - pp.y) ** 2 ? a : b));
     g.abducted = 270;
     ufo = {t: 0, g: ghosts.indexOf(g)};
@@ -740,7 +883,7 @@ function triggerEvent(forced) {
 
 function updateEvents() {
   if (discoTime > 0) discoTime--;
-  if (whale && ++whale.t === 60) waveClock = dest().waveEvery * 60;
+  if (whale && ++whale.t === 60) waveClock = levelCfg().waveEvery;
   if (whale && whale.t > 150) whale = null;
   if (ufo && ++ufo.t > 390) ufo = null;
   if (++eventClock >= nextEventAt) {
@@ -773,7 +916,13 @@ function step() {
   }
   if (state === 'clear') { if (--timer <= 0) { level++; state = 'travel'; timer = 210; } return; }
   if (state === 'travel') {
-    if (--timer === 105) { applyDestination(); loadDots(); resetPositions(); gfFat = Math.max(0, gfFat - 1); }
+    if (--timer === 105) {
+      applyDestination();
+      loadDots();
+      resetPositions();
+      // A new beach: she works off a couple of fish, and a shark turns back into herself.
+      if (gfShark) { gfShark = false; gfFish = 0; } else gfFish = Math.max(0, gfFish - 2);
+    }
     if (timer <= 0) { state = 'ready'; timer = 120; }
     return;
   }
@@ -785,6 +934,8 @@ function step() {
   if (beerTime > 0) beerTime--;
   if (jointTime > 0) jointTime--;
   if (redEyes > 0) redEyes--;
+  if (fireTime > 0) fireTime--;
+  if (fireCool > 0) fireCool--;
   if (pac.crabSafe > 0) pac.crabSafe--;
   if (pac.rayBlind > 0) pac.rayBlind--;
   if (pac.diveCool > 0) pac.diveCool--;
@@ -800,6 +951,7 @@ function step() {
   if (beerTime > 0 && pac.mode === 'normal' && Math.random() < 0.006) queued = DIRS[Math.floor(Math.random() * 4)]; // drunk swerve
   updateEvents();
   updateGfMood();
+  updateTraps();
   updateWaves(ts);
   updatePac();
   if (state !== 'play') return;
@@ -1042,7 +1194,7 @@ function applyDestination() {
   scene.add(sky);
   water.material.uniforms.sunDirection.value.copy(sun).normalize();
   water.material.uniforms.waterColor.value.set(d.water);
-  waveMat.color.set(d.water).offsetHSL(0, 0.05, 0.05);
+  wallMat.color.set(d.wall);
   sunLight.position.copy(sun).multiplyScalar(80);
   sunLight.color.set(d.sun);
   renderer.toneMappingExposure = d.exposure;
@@ -1178,24 +1330,37 @@ function buildBeach() {
   return group;
 }
 
-// ---------------------------------------------------------------- set waves
-const WAVE_SPAN = W * S + 16;
-const waveGeo = new THREE.PlaneGeometry(WAVE_SPAN, 10, 96, 60).rotateX(-Math.PI / 2);
-const waveProfile = dz => Math.exp(-((dz / (dz > 0 ? 1.2 : 2.6)) ** 2)); // steep face toward the south
+// ---------------------------------------------------------------- set waves (they roll in from any side)
+const WAVE_SPAN = Math.max(W, H) * S + 20;
+const waveGeo = new THREE.PlaneGeometry(WAVE_SPAN, 14, 140, 90).rotateX(-Math.PI / 2);
+const waveProfile = d => Math.exp(-((d / (d > 0 ? 0.9 : 3.4)) ** 2)); // steep face in front, long back
 {
-  const pos = waveGeo.attributes.position;
+  // Deep water at the base, glassy turquoise up the face, white water on the lip, and a curl that leans forward.
+  const pos = waveGeo.attributes.position, colors = new Float32Array(pos.count * 3);
+  const deep = new THREE.Color(0x06323d), glass = new THREE.Color(0x35c9cc), white = new THREE.Color(0xf4fbff), c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), taper = THREE.MathUtils.smoothstep(WAVE_SPAN / 2 - Math.abs(x), 0, 6);
-    pos.setY(i, waveProfile(pos.getZ(i)) * taper * (0.88 + 0.12 * Math.sin(x * 0.45)));
+    const x = pos.getX(i), z = pos.getZ(i);
+    const h = waveProfile(z) * THREE.MathUtils.smoothstep(WAVE_SPAN / 2 - Math.abs(x), 0, 8) * (0.9 + 0.1 * Math.sin(x * 0.35));
+    pos.setY(i, h);
+    pos.setZ(i, z + 0.55 * h ** 3);
+    if (h < 0.78) c.lerpColors(deep, glass, h / 0.78);
+    else c.lerpColors(glass, white, Math.min(1, (h - 0.78) / 0.18));
+    colors.set([c.r, c.g, c.b], i * 3);
   }
+  waveGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   waveGeo.computeVertexNormals();
 }
-const waveMat = new THREE.MeshPhysicalMaterial({color: 0x1a8a96, roughness: 0.06, clearcoat: 1, transparent: true, opacity: 0.8, emissive: 0x04222a, envMapIntensity: 1.3});
+const waveNormals = water.material.uniforms.normalSampler.value.clone();
+waveNormals.repeat.set(10, 2);
+waveNormals.needsUpdate = true;
+const waveMat = new THREE.MeshPhysicalMaterial({vertexColors: true, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.05, transparent: true, opacity: 0.92, normalMap: waveNormals, normalScale: new THREE.Vector2(0.6, 0.6), envMapIntensity: 1.2, side: THREE.DoubleSide});
 const waveMesh = new THREE.Mesh(waveGeo, waveMat);
 waveMesh.position.y = -0.04;
 waveMesh.visible = false;
 scene.add(waveMesh);
-const waveH = z => wave ? waveProfile(z - wz(wave.row)) * waveMesh.scale.y : 0;
+// Distance in front of the crest, measured along the direction the wave is travelling.
+const waveLocal = (x, z) => (wave.axis === 'y' ? wave.sign * (z - wz(wave.pos)) : wave.sign * (x - wx(wave.pos)));
+const waveH = (x, z) => (wave ? waveProfile(waveLocal(x, z)) * waveMesh.scale.y : 0);
 
 // ---------------------------------------------------------------- surfers: Pac-Man & his girlfriend
 // Hearts that float up from his girlfriend.
@@ -1397,6 +1562,85 @@ function makeJoint() {
   g.userData.ember = ember;
   return g;
 }
+// Dive mask and snorkel, worn whenever he's underwater.
+const maskGlass = new THREE.MeshPhysicalMaterial({color: 0x9fe8ff, roughness: 0.05, transparent: true, opacity: 0.45, clearcoat: 1});
+const maskRim = new THREE.MeshStandardMaterial({color: 0x1b1f24, roughness: 0.4});
+const scubaParts = [];
+for (const eye of pacV.eyes) {
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.04, 24).rotateX(Math.PI / 2), maskGlass);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.045, 8, 24), maskRim);
+  lens.position.z = rim.position.z = 0.22;
+  eye.add(lens, rim);
+  scubaParts.push(lens, rim);
+}
+const strap = new THREE.Mesh(new THREE.TorusGeometry(pacV.R * 1.0, 0.035, 8, 48), maskRim);
+strap.position.y = 0.3;
+strap.rotation.x = Math.PI / 2 - 0.45;
+const snorkel = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+  new THREE.Vector3(pacV.R * 0.7, 0.05, pacV.R * 0.6), new THREE.Vector3(pacV.R * 1.0, 0.25, 0.15),
+  new THREE.Vector3(pacV.R * 1.06, 0.9, -0.05), new THREE.Vector3(pacV.R * 1.0, 1.35, -0.15)]), 24, 0.055, 10), new THREE.MeshStandardMaterial({color: 0xff8a1a, roughness: 0.4}));
+pacV.upper.add(strap, snorkel);
+scubaParts.push(strap, snorkel);
+
+// When she eats more than ten fish she turns into a shark (still wearing her bow).
+const sharkV = (() => {
+  const g = new THREE.Group();
+  const skin = new THREE.MeshPhysicalMaterial({color: 0x6b7f92, roughness: 0.4, clearcoat: 0.6});
+  const belly = new THREE.MeshStandardMaterial({color: 0xeef2f4, roughness: 0.6});
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), skin);
+  body.scale.set(0.55, 0.45, 1.7);
+  const under = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), belly);
+  under.scale.set(0.5, 0.33, 1.55);
+  under.position.y = -0.12;
+  const dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 4), skin);
+  dorsal.scale.z = 0.25;
+  dorsal.position.set(0, 0.6, -0.1);
+  dorsal.rotation.x = -0.35;
+  const tail = new THREE.Group();
+  tail.position.z = -1.6;
+  for (const s of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.9, 4), skin);
+    fin.scale.x = 0.25;
+    fin.position.set(0, s * 0.35, -0.25);
+    fin.rotation.x = s > 0 ? -0.7 : -2.4;
+    tail.add(fin);
+  }
+  for (const s of [-1, 1]) {
+    const pec = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 4), skin);
+    pec.scale.y = 0.3;
+    pec.position.set(s * 0.6, -0.15, 0.35);
+    pec.rotation.set(0, 0, s * -1.9);
+    g.add(pec);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), maskRim);
+    eye.position.set(s * 0.32, 0.12, 1.15);
+    g.add(eye);
+  }
+  const toothMat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.3});
+  for (let i = 0; i < 9; i++) {
+    const a = -0.9 + i * 0.225;
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.11, 4), toothMat);
+    tooth.position.set(Math.sin(a) * 0.36, -0.14, 1.28 + Math.cos(a) * 0.12 - 0.12);
+    tooth.rotation.x = Math.PI;
+    g.add(tooth);
+  }
+  const bowMat = new THREE.MeshPhysicalMaterial({color: 0xe0102f, roughness: 0.3, clearcoat: 1});
+  const bow = new THREE.Group();
+  for (const s of [-1, 1]) {
+    const loop = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 16), bowMat);
+    loop.rotation.z = s * Math.PI / 2;
+    loop.position.x = s * 0.15;
+    bow.add(loop);
+  }
+  bow.position.set(0, 0.45, 0.7);
+  g.add(body, under, dorsal, tail, bow);
+  g.position.y = 0.25;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.visible = false;
+  gfV.group.add(g);
+  g.userData.tail = tail;
+  return g;
+})();
+
 const mouthJoint = makeJoint();
 mouthJoint.position.set(0.24, -0.01, pacV.R * 0.95);
 mouthJoint.rotation.y = 0.5;
@@ -1554,6 +1798,7 @@ const ringGeo = new THREE.TorusGeometry(0.7, 0.03, 8, 48).rotateX(Math.PI / 2);
 const ringMats = {
   beer: new THREE.MeshStandardMaterial({color: 0, emissive: 0xffc23a, emissiveIntensity: 2.5}),
   joint: new THREE.MeshStandardMaterial({color: 0, emissive: 0x4dff6a, emissiveIntensity: 2.5}),
+  goggles: new THREE.MeshStandardMaterial({color: 0, emissive: 0x4fd8ff, emissiveIntensity: 2.5}),
 };
 function makeItem(type) {
   const group = new THREE.Group(), prop = new THREE.Group();
@@ -1566,6 +1811,17 @@ function makeItem(type) {
     prop.add(bottle, label, cap);
     prop.position.y = -0.5;
     prop.scale.setScalar(1.25);
+  } else if (type === 'goggles') {
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 24).rotateX(Math.PI / 2), maskGlass);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 8, 24), maskRim);
+      lens.position.x = rim.position.x = sx * 0.24;
+      prop.add(lens, rim);
+    }
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.035, 8, 32, Math.PI), new THREE.MeshStandardMaterial({color: 0x2f9bff, roughness: 0.5}));
+    band.rotation.x = -Math.PI / 2;
+    prop.add(band);
+    prop.scale.setScalar(1.4);
   } else {
     const j = makeJoint();
     j.scale.setScalar(1.6);
@@ -1941,15 +2197,19 @@ function updateStarView() {
   starV.visible = !!starfish && state === 'play' && (starfish.t < 600 || Math.floor(starfish.t / 8) % 2 === 0);
   if (!starfish) return;
   const z = wz(starfish.y);
-  starV.position.set(wx(starfish.x), waveH(z), z);
+  starV.position.set(wx(starfish.x), waveH(wx(starfish.x), z), z);
   starMesh.position.y = 0.5 + Math.sin(time * 3) * 0.12;
   starMesh.rotation.set(0.4 * Math.sin(time * 1.5), time * 2, 0);
 }
 
-const chest = (() => {
+// Treasure chests sit on rock pillars right at swimming depth, so you swim straight into them.
+const CHEST_Y = DIVE_DEPTH + 0.15;
+const rockMat = new THREE.MeshStandardMaterial({color: 0x5d6466, roughness: 0.95});
+function makeChest() {
   const g = new THREE.Group();
   const wood = new THREE.MeshStandardMaterial({color: 0x6b4423, roughness: 0.8});
   const gold = new THREE.MeshStandardMaterial({color: 0xffc83a, metalness: 1, roughness: 0.25, emissive: 0x553300, emissiveIntensity: 0.6});
+  const box = new THREE.Group();
   const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.8), wood);
   base.position.y = 0.35;
   const lidPivot = new THREE.Group();
@@ -1961,32 +2221,94 @@ const chest = (() => {
   for (const x of [-0.45, 0.45]) {
     const band = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.72, 0.82), gold);
     band.position.set(x, 0.36, 0);
-    g.add(band);
+    box.add(band);
   }
   for (let i = 0; i < 9; i++) {
     const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 16), gold);
     coin.position.set((Math.random() - 0.5) * 0.9, 0.72 + Math.random() * 0.1, (Math.random() - 0.5) * 0.5);
     coin.rotation.set(Math.random(), 0, Math.random());
-    g.add(coin);
+    box.add(coin);
   }
+  box.add(base, lidPivot);
+  box.scale.setScalar(1.2);
+  box.position.y = CHEST_Y;
+  const pillarH = CHEST_Y - FLOOR_Y;
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.2, pillarH, 9), rockMat);
+  pillar.position.y = FLOOR_Y + pillarH / 2;
   const glow = new THREE.PointLight(0xffc83a, 14, 9, 2);
-  glow.position.y = 1.2;
-  g.add(base, lidPivot, glow);
-  g.scale.setScalar(1.4);
+  glow.position.y = CHEST_Y + 1.2;
+  g.add(box, pillar, glow);
   g.userData.glow = glow;
   underwater.add(g);
   return g;
-})();
+}
+const chests = [makeChest(), makeChest(), makeChest()];
+
+const COIN_MAX = 30;
+const coinMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.22, 0.05, 20).rotateX(Math.PI / 2),
+  new THREE.MeshStandardMaterial({color: 0xffd34d, metalness: 1, roughness: 0.25, emissive: 0x6a4a00, emissiveIntensity: 0.8}), COIN_MAX);
+coinMesh.frustumCulled = false;
+underwater.add(coinMesh);
+
 function updateTreasureView() {
-  chest.visible = !!treasure && !treasure.found;
-  if (!chest.visible) return;
-  chest.position.set(wx(treasure.x), FLOOR_Y, wz(treasure.y));
-  chest.userData.glow.intensity = 12 + Math.sin(time * 4) * 4;
-  // A faint golden shimmer on the surface hints where it's hidden.
-  if (state === 'play' && pac.mode === 'normal' && frame % 24 === 0) {
-    const p = new THREE.Vector3(wx(treasure.x) + (Math.random() - 0.5) * 2.4, 0.08, wz(treasure.y) + (Math.random() - 0.5) * 2.4);
-    spawn(foam, p, new THREE.Vector3(0, 0.012, 0), 0.07, 50, {color: GOLD, gravity: -0.0002});
+  chests.forEach((g, i) => {
+    const t = treasures[i];
+    g.visible = !!t && !t.found;
+    if (!g.visible) return;
+    g.position.set(wx(t.x), 0, wz(t.y));
+    g.userData.glow.intensity = 12 + Math.sin(time * 4 + i) * 4;
+    // A faint golden shimmer on the surface hints where each one is hidden.
+    if (state === 'play' && pac.mode === 'normal' && (frame + i * 8) % 24 === 0) {
+      const p = new THREE.Vector3(wx(t.x) + (Math.random() - 0.5) * 2.4, 0.08, wz(t.y) + (Math.random() - 0.5) * 2.4);
+      spawn(foam, p, new THREE.Vector3(0, 0.012, 0), 0.07, 50, {color: GOLD, gravity: -0.0002});
+    }
+  });
+  if (!underwater.visible) return;
+  for (let i = 0; i < COIN_MAX; i++) {
+    const c = coins[i];
+    const show = c && !c.taken;
+    tmpQ.setFromEuler(new THREE.Euler(0, time * 3 + i, 0));
+    coinMesh.setMatrixAt(i, tmpM.compose(show ? tmpV.set(wx(c.x), DIVE_DEPTH + 0.85 + Math.sin(time * 2 + i) * 0.1, wz(c.y)) : tmpV.set(0, -50, 0), tmpQ, tmpS.setScalar(show ? 1 : 0)));
   }
+  coinMesh.instanceMatrix.needsUpdate = true;
+}
+
+// Fish traps: a red-and-white float over a cage, with the catch swimming inside.
+const trapViews = Array.from({length: 3}, () => {
+  const g = new THREE.Group();
+  const red = new THREE.MeshStandardMaterial({color: 0xe0303a, roughness: 0.4});
+  const white = new THREE.MeshStandardMaterial({color: 0xf4f4f4, roughness: 0.4});
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), red);
+  const bottom = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), white);
+  const flag = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 6), white);
+  flag.position.y = 0.45;
+  const cage = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.5, 0.9), new THREE.MeshStandardMaterial({color: 0x333a3c, wireframe: true}));
+  cage.position.y = -0.35;
+  const fishInTrap = [0, 1, 2].map(k => {
+    const f = new THREE.Mesh(fishGeo, new THREE.MeshStandardMaterial({color: [0xffd23f, 0xff7a1a, 0x2f9bff][k], roughness: 0.4}));
+    f.scale.setScalar(1.3);
+    f.position.set((k - 1) * 0.28, 0.12, 0);
+    return f;
+  });
+  g.add(top, bottom, flag, cage, ...fishInTrap);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.visible = false;
+  scene.add(g);
+  return {g, fishInTrap};
+});
+function updateTrapViews() {
+  trapViews.forEach((v, i) => {
+    const t = traps[i];
+    v.g.visible = !!t && state !== 'travel';
+    if (!v.g.visible) return;
+    const z = wz(t.y);
+    v.g.position.set(wx(t.x), 0.15 + waveH(wx(t.x), z) + Math.sin(time * 2.2 + i) * 0.06, z);
+    v.g.rotation.y = time * 0.3 + i;
+    v.fishInTrap.forEach((f, k) => {
+      f.visible = k < t.fish;
+      f.rotation.y = Math.sin(time * 6 + k) * 0.5;
+    });
+  });
 }
 
 const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.03, 1.8, 8).translate(0, 0.9, 0), new THREE.MeshStandardMaterial({color: 0x7a4a22, roughness: 0.6}));
@@ -2024,12 +2346,12 @@ const trail = [];
 function updatePearls() {
   dotTiles.forEach(([x, y], i) => {
     const s = dots[y][x] ? 1 : 0;
-    tmpV.set(wx(x), 0.5 + waveH(wz(y)) + Math.sin(time * 2 + x * 0.7 + y * 1.3) * 0.07, wz(y));
+    tmpV.set(wx(x), 0.5 + waveH(wx(x), wz(y)) + Math.sin(time * 2 + x * 0.7 + y * 1.3) * 0.07, wz(y));
     dotMesh.setMatrixAt(i, tmpM.compose(tmpV, tmpQ.identity(), tmpS.setScalar(s)));
   });
   powerTiles.forEach(([x, y], i) => {
     const s = dots[y][x] ? 1 + Math.sin(time * 6) * 0.15 : 0;
-    tmpV.set(wx(x), 0.65 + waveH(wz(y)) + Math.sin(time * 2.4 + x) * 0.1, wz(y));
+    tmpV.set(wx(x), 0.65 + waveH(wx(x), wz(y)) + Math.sin(time * 2.4 + x) * 0.1, wz(y));
     powerMesh.setMatrixAt(i, tmpM.compose(tmpV, tmpQ.identity(), tmpS.setScalar(s)));
   });
   dotMesh.instanceMatrix.needsUpdate = powerMesh.instanceMatrix.needsUpdate = true;
@@ -2042,9 +2364,12 @@ function rideSurfer(v, heading, moving, dt, chompSpeed, wake = true) {
   v.heading += turn;
   v.group.rotation.y = v.heading;
   v.lean += (-turn * 9 - v.lean) * Math.min(1, dt * 8);
-  const slope = (waveH(v.group.position.z + 0.3) - waveH(v.group.position.z - 0.3)) / 0.6;
+  // Tilt with the water: pitch from the slope ahead, roll from the slope to the side.
+  const gp = v.group.position, fx = Math.sin(v.heading), fz = Math.cos(v.heading);
+  const pitch = (waveH(gp.x + fx * 0.3, gp.z + fz * 0.3) - waveH(gp.x - fx * 0.3, gp.z - fz * 0.3)) / 0.6;
+  const roll = (waveH(gp.x + fz * 0.3, gp.z - fx * 0.3) - waveH(gp.x - fz * 0.3, gp.z + fx * 0.3)) / 0.6;
   v.rider.position.y = 0.12 + Math.sin(time * 3.1 + v.R) * 0.05;
-  v.rider.rotation.set(Math.sin(time * 2.3) * 0.05 - (moving ? 0.06 : 0) - slope * Math.cos(v.heading) * 0.5, 0, v.lean + Math.sin(time * 1.7) * 0.04 + slope * Math.sin(v.heading) * 0.5);
+  v.rider.rotation.set(Math.sin(time * 2.3) * 0.05 - (moving ? 0.06 : 0) - pitch * 0.5, 0, v.lean + Math.sin(time * 1.7) * 0.04 + roll * 0.5);
   const mouth = moving ? 0.08 + Math.abs(Math.sin(time * chompSpeed)) * 0.55 : 0.28;
   v.upper.rotation.x = -mouth;
   v.lower.rotation.x = mouth;
@@ -2056,7 +2381,7 @@ function rideSurfer(v, heading, moving, dt, chompSpeed, wake = true) {
     for (const s of [-1, 1]) {
       for (let n = 0; n < boost; n++) {
         const p = base.clone().addScaledVector(fwd, -0.8).addScaledVector(side, s * 0.3);
-        p.y = 0.08 + waveH(p.z);
+        p.y = 0.08 + waveH(p.x, p.z);
         const vel = side.clone().multiplyScalar(s * (0.02 + Math.random() * 0.02 * boost)).addScaledVector(fwd, -0.01);
         vel.y = 0.02 + Math.random() * 0.03 * boost;
         spawn(foam, p, vel, 0.08 + Math.random() * 0.08, 50 + Math.random() * 40);
@@ -2066,7 +2391,7 @@ function rideSurfer(v, heading, moving, dt, chompSpeed, wake = true) {
       const out = Math.sign(turn);
       for (let i = 0; i < 6; i++) {
         const p = base.clone().addScaledVector(side, -out * 0.4);
-        p.y = 0.2 + waveH(p.z);
+        p.y = 0.2 + waveH(p.x, p.z);
         const vel = side.clone().multiplyScalar(-out * (0.05 + Math.random() * 0.06)).addScaledVector(fwd, (Math.random() - 0.5) * 0.06);
         vel.y = 0.08 + Math.random() * 0.1;
         spawn(foam, p, vel, 0.06 + Math.random() * 0.07, 40 + Math.random() * 20);
@@ -2080,19 +2405,29 @@ function updatePacView(dt) {
   let px, py, pz;
   if (pac.mode === 'surf' && wave) {
     // Up on the face of the wave, just ahead of the crest.
-    px = wx(pac.sx);
-    pz = wz(wave.row) + 0.6;
+    const lead = wave.sign * 0.6;
+    if (wave.axis === 'y') { px = wx(pac.sl); pz = wz(wave.pos) + lead; }
+    else { px = wx(wave.pos) + lead; pz = wz(pac.sl); }
     py = waveMesh.scale.y * waveProfile(0.6);
   } else {
     const {x, y} = rpos(pac);
     px = wx(x);
     pz = wz(y);
-    py = waveH(pz);
+    py = waveH(px, pz);
   }
   pacDepth += ((pac.mode === 'dive' ? DIVE_DEPTH : 0) - pacDepth) * Math.min(1, dt * 5);
   pacV.group.position.set(px, py + pacDepth, pz);
   pacV.group.visible = state !== 'over';
   pacV.board.forEach(m => { m.visible = pacDepth > -0.5; });
+  scubaParts.forEach(m => { m.visible = pacDepth < -0.3 || pac.mode === 'dive'; });
+  // On fire: he glows and trails flames.
+  pacV.mat.emissive.setRGB(fireTime > 0 ? 0.9 + 0.3 * Math.sin(time * 20) : 0, fireTime > 0 ? 0.25 : 0, 0);
+  if (fireTime > 0 && state === 'play') {
+    for (let i = 0; i < 2; i++) {
+      const p = pacV.group.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.9, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * 0.9));
+      spawn(foam, p, new THREE.Vector3((Math.random() - 0.5) * 0.01, 0.04 + Math.random() * 0.03, (Math.random() - 0.5) * 0.01), 0.1 + Math.random() * 0.08, 22, {color: Math.random() < 0.5 ? FIRE_ORANGE : GOLD, gravity: -0.001});
+    }
+  }
   const moving = state === 'play' && !paused && freeze === 0 && pac.stun === 0 && (pac.mode === 'surf' || pac.dir.x || pac.dir.y);
 
   if (state === 'dying') {
@@ -2161,7 +2496,7 @@ function updatePacView(dt) {
   }
 }
 
-const MAD_RED = new THREE.Color(0xff3a1f);
+const MAD_RED = new THREE.Color(0xff3a1f), FIRE_ORANGE = new THREE.Color(0xff5a14);
 // His girlfriend surfs his line a few board-lengths behind him.
 function updateGirlfriend(dt) {
   const head = pacV.group.position;
@@ -2174,7 +2509,7 @@ function updateGirlfriend(dt) {
   if (last.distanceTo(tmpV.set(head.x, 0, head.z)) > 0.08) trail.push(new THREE.Vector3(head.x, 0, head.z));
   if (trail.length > 400) trail.shift();
   let idx = trail.length - 1, dist = 0;
-  while (idx > 0 && dist < (gfMad > 0 ? 7 : 3.6) + gfFat * 1.4) {
+  while (idx > 0 && dist < (gfMad > 0 ? 7 : 3.6) + gfFat() * 1.4 + (gfShark ? 1.5 : 0)) {
     const stepLen = trail[idx].distanceTo(trail[idx - 1]);
     if (stepLen > 3) break;
     dist += stepLen;
@@ -2183,7 +2518,7 @@ function updateGirlfriend(dt) {
   const p = trail[idx], next = trail[Math.min(trail.length - 1, idx + 3)];
   gfV.group.visible = state !== 'over';
   const moved = gfV.group.position.distanceTo(tmpV.set(p.x, gfV.group.position.y, p.z)) > 0.005;
-  gfV.group.position.set(p.x, waveH(p.z), p.z);
+  gfV.group.position.set(p.x, waveH(p.x, p.z), p.z);
   const heading = next.distanceTo(p) > 0.01 ? Math.atan2(next.x - p.x, next.z - p.z) : gfV.heading;
   rideSurfer(gfV, heading, moved && state === 'play', dt, 9);
   if (beerTime > 0) {
@@ -2193,7 +2528,7 @@ function updateGirlfriend(dt) {
   if (discoTime > 0) gfV.rider.position.y += Math.abs(Math.sin(time * 8 + 1)) * 0.3;
 
   // Every stingray she eats shows up on her waistline.
-  const wide = 1 + gfFat * 0.17;
+  const wide = 1 + gfFat() * 0.17;
   gfV.body.scale.x += (wide - gfV.body.scale.x) * Math.min(1, dt * 3);
   gfV.body.scale.z = gfV.body.scale.x;
   gfV.body.scale.y = 1 + (gfV.body.scale.x - 1) * 0.3;
@@ -2204,6 +2539,38 @@ function updateGirlfriend(dt) {
     const a = Math.random() * Math.PI * 2;
     const p = gfV.group.position.clone().add(new THREE.Vector3(Math.cos(a) * 0.9, 0.4 + Math.random() * 1.2, Math.sin(a) * 0.9));
     spawn(foam, p, new THREE.Vector3(0, 0.01, 0), 0.05, 40, {color: GOLD, gravity: -0.0002});
+  }
+
+  // She snacks on any trap she swims past.
+  for (const t of traps) {
+    if (!t.fish || state !== 'play') continue;
+    if (Math.hypot(gfV.group.position.x - wx(t.x), gfV.group.position.z - wz(t.y)) > 1.6) continue;
+    popups.push({x: t.x, y: t.y, text: `😋 +${t.fish} fish`, t: 60});
+    gfEat(t.fish, 50 * t.fish);
+    t.fish = 0;
+  }
+  // Shark mode: she's a shark now. She eats stingrays, and running into her costs you a life.
+  gfV.rider.visible = !gfShark;
+  sharkV.visible = gfShark;
+  if (gfShark) {
+    sharkV.userData.tail.rotation.y = Math.sin(time * 8) * 0.45;
+    sharkV.rotation.y = Math.sin(time * 4) * 0.08;
+    if (state === 'play') {
+      ghosts.forEach(g => {
+        if (g.state !== 'active' || g.hooked || g.abducted) return;
+        const gp = rpos(g);
+        if (Math.hypot(gfV.group.position.x - wx(gp.x), gfV.group.position.z - wz(gp.y)) > 1.4) return;
+        g.state = 'eaten';
+        g.fright = false;
+        addScore(200);
+        popups.push({x: gp.x, y: gp.y, text: '🦈 CHOMP +200', t: 60});
+      });
+      if (pac.mode === 'normal' && pac.rayBlind === 0 && pacV.group.position.distanceTo(gfV.group.position) < 1.3) {
+        state = 'dying';
+        timer = 90;
+        toast('🦈 You ran into the shark!', 150);
+      }
+    }
   }
 
   // Mad at him for smoking: red-faced, scowling, fuming.
@@ -2265,7 +2632,7 @@ function updateRays(dt) {
     const v = rayViews[i];
     const {x, y} = rpos(g);
     v.group.visible = state !== 'clear' && state !== 'dying' && state !== 'travel';
-    v.group.position.set(wx(x), 0.12 + waveH(wz(y)) + Math.sin(time * 2.6 + i * 1.7) * 0.05, wz(y));
+    v.group.position.set(wx(x), 0.12 + waveH(wx(x), wz(y)) + Math.sin(time * 2.6 + i * 1.7) * 0.05, wz(y));
     if (g.dir.x || g.dir.y) v.heading += angleDiff(v.heading, headingOf(g.dir)) * Math.min(1, dt * 10);
     v.group.rotation.y = v.heading + (discoTime > 0 ? time * 4 : 0);
     v.group.rotation.z = beerTime > 0 ? Math.sin(time * 3 + i) * 0.4 : 0;
@@ -2323,7 +2690,7 @@ function updateCrabs(dt) {
     } else {
       v.group.rotation.x = 0;
     }
-    v.group.position.set(wx(x), 0.02 + waveH(wz(y)) + lift, wz(y) + push);
+    v.group.position.set(wx(x), 0.02 + waveH(wx(x), wz(y)) + lift, wz(y) + push);
     v.group.rotation.z = beerTime > 0 ? Math.sin(time * 4 + i) * 0.4 : 0;
     if (beerTime > 0) hiccup(v.group.position, i + 7);
     // Crabs walk sideways, so they face across their direction of travel.
@@ -2350,7 +2717,7 @@ function updateItemViews() {
     let mesh = itemViews.get(it);
     if (!mesh) { mesh = makeItem(it.type); itemViews.set(it, mesh); }
     const z = wz(it.y);
-    mesh.position.set(wx(it.x), waveH(z), z);
+    mesh.position.set(wx(it.x), waveH(wx(it.x), z), z);
     const {holder, prop} = mesh.userData;
     holder.position.y = 0.55 + Math.sin(time * 2.5 + it.x) * 0.1;
     holder.rotation.set(0.35 * Math.sin(time * 1.3), time * 1.2, it.type === 'joint' ? 0.25 : 0.2 * Math.sin(time * 1.7));
@@ -2365,11 +2732,17 @@ function updateWaveView() {
   waveMesh.visible = !!wave;
   water.material.uniforms.distortionScale.value = wave ? 2.2 : 1.1;
   if (!wave) return;
-  const z = wz(wave.row);
-  waveMesh.position.z = z;
-  for (let i = 0; i < 6; i++) {
-    const p = new THREE.Vector3((Math.random() - 0.5) * (WAVE_SPAN - 10), waveMesh.scale.y * 0.95, z + 0.3);
-    spawn(foam, p, new THREE.Vector3((Math.random() - 0.5) * 0.02, 0.03 + Math.random() * 0.03, 0.05 + Math.random() * 0.04), 0.1 + Math.random() * 0.1, 30 + Math.random() * 20);
+  // Local +z of the wave mesh points the way the wave travels.
+  waveMesh.rotation.y = Math.atan2(wave.dir.x, wave.dir.y);
+  if (wave.axis === 'y') waveMesh.position.set(0, -0.04, wz(wave.pos));
+  else waveMesh.position.set(wx(wave.pos), -0.04, 0);
+  waveNormals.offset.x += 0.0015;
+  waveNormals.offset.y -= 0.004;
+  const fx = wave.dir.x, fz = wave.dir.y, crest = waveMesh.scale.y * 0.95;
+  for (let i = 0; i < 7; i++) {
+    const l = (Math.random() - 0.5) * (WAVE_SPAN - 14);
+    const p = new THREE.Vector3(waveMesh.position.x + (fz ? l : fx * 0.5), crest, waveMesh.position.z + (fx ? l : fz * 0.5));
+    spawn(foam, p, new THREE.Vector3(fx * 0.06 + (Math.random() - 0.5) * 0.02, 0.03 + Math.random() * 0.03, fz * 0.06 + (Math.random() - 0.5) * 0.02), 0.1 + Math.random() * 0.12, 30 + Math.random() * 20);
   }
 }
 
@@ -2444,12 +2817,16 @@ function updateOverlay() {
   setText('jointCount', jointTime > 0 ? `${Math.ceil(jointTime / 60)}s` : inv.joint);
   $('beerBtn').disabled = !inv.beer || state !== 'play';
   $('jointBtn').disabled = !inv.joint || state !== 'play';
-  setText('diveCount', pac.mode === 'dive' ? `${Math.max(0, Math.ceil(pac.dive / 60))}s` : pac.diveCool > 0 ? `${Math.ceil(pac.diveCool / 60)}s` : 'X');
-  $('diveBtn').disabled = state !== 'play' || pac.mode !== 'normal' || pac.diveCool > 0;
-  const catchable = state === 'play' && pac.mode === 'normal' && wave && wave.row > rpos(pac).y - 3 && wave.row < rpos(pac).y + 1.5;
+  setText('diveCount', inv.dives);
+  $('diveBtn').disabled = state !== 'play' || pac.mode !== 'normal' || pac.diveCool > 0 || !inv.dives;
+  $('trapBtn').disabled = state !== 'play' || pac.mode !== 'normal';
+  $('air').style.opacity = pac.mode === 'dive' ? 1 : 0;
+  $('airFill').style.width = `${Math.max(0, pac.dive / DIVE_TIME) * 100}%`;
+  const gap = wave ? wave.sign * (along(rpos(pac)) - wave.pos) : 0;
+  const catchable = state === 'play' && pac.mode === 'normal' && wave && gap > -2.5 && gap < 1.5;
   $('surfBtn').disabled = !(state === 'play' && pac.mode === 'normal' && (wave || waveWarned));
   $('surfBtn').classList.toggle('pulse', !!catchable || (pac.wantsSurf && pac.mode === 'normal'));
-  setText('fishCount', pac.fishCool > 30 ? `${Math.ceil(pac.fishCool / 60)}s` : 'G');
+  setText('fishCount', pac.fishCool > 30 ? `${Math.ceil(pac.fishCool / 60)}s` : 'Fish');
   $('fishBtn').disabled = state !== 'play' || pac.mode !== 'normal' || pac.fishCool > 0;
   const bubble = $('speech');
   bubble.style.opacity = speechTime > 0 && gfV.group.visible && state !== 'over' ? 1 : 0;
@@ -2484,7 +2861,7 @@ function updatePopups() {
 }
 
 // ---------------------------------------------------------------- input
-const KEYS = {arrowup: UP, w: UP, arrowdown: DOWN, s: DOWN, arrowleft: LEFT, a: LEFT, arrowright: RIGHT, d: RIGHT};
+const KEYS = {arrowup: UP, arrowdown: DOWN, arrowleft: LEFT, arrowright: RIGHT};
 // Drunk steering: everything is reversed, and sometimes you just go wherever.
 // In the close-up dive and surf cameras, steering is relative: up is forward, left/right turn.
 function steer(d) {
@@ -2512,15 +2889,16 @@ document.addEventListener('keydown', e => {
   else if (k === 'enter' && (state === 'start' || state === 'over')) newGame();
   else if ((k === ' ' || k === 'p') && state === 'play') paused = !paused;
   else if (k === 'c') toggleCamera();
-  else if (k === 'b') useItem('beer');
-  else if (k === 'j') useItem('joint');
-  else if (k === 'x' || k === 'shift') startDive();
-  else if (k === 'f') catchWave();
-  else if (k === 'g') castLine();
+  else if (k === 'w') useItem('beer');
+  else if (k === 'a') useItem('joint');
+  else if (k === 's') startDive();
+  else if (k === 'd') catchWave();
+  else if (k === 'x') castLine();
+  else if (k === 't') placeTrap();
   else return;
   e.preventDefault();
 });
-for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave], ['fishBtn', castLine]]) {
+for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave], ['fishBtn', castLine], ['trapBtn', placeTrap]]) {
   $(id).addEventListener('click', e => { e.stopPropagation(); fn(); $(id).blur(); });
 }
 
@@ -2555,7 +2933,8 @@ function animate() {
   time += dt;
   water.material.uniforms.time.value += dt * 0.55 * (wave ? 1.6 : 1);
   if (discoTime > 0) trimMat.emissive.setHSL((time * 0.6) % 1, 1, 0.55);
-  else trimMat.emissive.set(state === 'clear' && Math.floor(timer / 12) % 2 ? 0xffffff : 0x2b5cff);
+  else if (fireTime > 0) trimMat.emissive.setHSL(0.03 + 0.04 * Math.sin(time * 10), 1, 0.5);
+  else trimMat.emissive.set(state === 'clear' && Math.floor(timer / 12) % 2 ? 0xffffff : dest().trim);
   if (beach && beach.visible) {
     for (const c of palmCrowns) c.rotation.set(Math.sin(time * 0.9 + c.userData.phase) * 0.06, 0, Math.sin(time * 1.3 + c.userData.phase) * 0.08);
   }
@@ -2567,6 +2946,7 @@ function animate() {
   updateItemViews();
   updateStarView();
   updateTreasureView();
+  updateTrapViews();
   rod.visible = ghosts.some(g => g.hooked > 0);
   fishLine.visible = !!hookedPos;
   if (hookedPos) {
@@ -2598,9 +2978,9 @@ function animate() {
 }
 // Test hook: inspect and drive the game from the browser console.
 window.pacSurf = {
-  get state() { return {state, score, lives, level, inv: {...inv}, beerTime, jointTime, redEyes, gfMad, speech: speechTime > 0 ? speech : '', discoTime, ufo: !!ufo, whale: !!whale, camY: camera.position.y, wave: wave && wave.row, pac: {...pac}, crabs: crabs.length, items: items.length, dotsLeft, place: dest().name}; },
+  get state() { return {state, score, lives, level, inv: {...inv}, beerTime, jointTime, redEyes, gfMad, speech: speechTime > 0 ? speech : '', discoTime, ufo: !!ufo, whale: !!whale, camY: camera.position.y, wave: wave && wave.pos, fireTime, traps: traps.map(t => t.fish), coins: coins.filter(c => !c.taken).length, pac: {...pac}, crabs: crabs.length, items: items.length, dotsLeft, place: dest().name}; },
   give(type, n = 1) { inv[type] += n; },
-  wave() { waveClock = dest().waveEvery * 60; },
+  wave(dx, dy) { if (dx !== undefined) { nextWaveDir = {x: dx, y: dy}; waveWarned = true; } waveClock = levelCfg().waveEvery; },
   clear() { for (const row of dots) row.fill(''); dotsLeft = 0; state = 'clear'; timer = 1; },
   warp(n) { level = n; applyDestination(); startLevel(); },
   dive() { startDive(); },
@@ -2609,8 +2989,11 @@ window.pacSurf = {
   go(dx, dy) { queued = {x: dx, y: dy}; },
   star() { const [x, y] = randomTile(2); starfish = {x, y, t: 0}; },
   starAt(x, y) { starfish = {x, y, t: 0}; },
-  get treasure() { return treasure; },
-  get gf() { return {gfFat, gfGlam, gfMad}; },
+  get treasures() { return treasures; },
+  get gf() { return {gfFish, gfShark, gfGlam, gfMad}; },
+  trap() { placeTrap(); },
+  feed(n) { gfEat(n, 0); },
+  points(n) { addScore(n); },
   rays() { return ghosts.map(g => ({state: g.state, hooked: g.hooked, ...rpos(g)})); },
   surf() { catchWave(); },
   event(name) { triggerEvent(name); },
