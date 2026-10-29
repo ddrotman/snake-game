@@ -56,11 +56,26 @@
   #controls .group { display: flex; gap: 8px; }
   #controls button { pointer-events: auto; padding: 9px 14px; border-radius: 14px; color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
   #controls button:disabled { opacity: 0.4; cursor: default; }
-  #controls .group { flex-wrap: wrap; max-width: calc(100vw - 150px); }
+  #controls { gap: 10px; }
+  #controls .group { flex-wrap: wrap; }
+  #controls .group:first-child { max-width: calc(100vw - 230px); }
+  #againBtn { display: none; margin-top: 22px; padding: 12px 28px; border: 0; border-radius: 14px; font: 900 18px system-ui, sans-serif; color: #2a1200; background: linear-gradient(180deg, #ffe46b, #ffb21f); box-shadow: 0 5px 0 #b86a00; cursor: pointer; pointer-events: auto; }
+  body.over #againBtn { display: inline-block; }
+  @media (max-width: 800px) {
+    #help { display: none; }
+    #controls { bottom: 14px; left: 10px; right: 10px; }
+    #controls button { padding: 7px 9px; font-size: 13px; }
+    #controls button i { display: none; }
+    #controls .group:first-child { max-width: calc(100vw - 150px); }
+    #controls #view { font-size: 0; padding: 7px 10px; }
+    #controls #view::before { content: '🎥'; font-size: 15px; }
+    #toast { white-space: normal; text-align: center; width: max-content; font-size: 14px; }
+    #hud { font-size: 12px; gap: 2px 12px; padding: 7px 14px; }
+  }
   #controls button.pulse { animation: pulse 0.6s ease-in-out infinite alternate; border-color: #7ff; }
   @keyframes pulse { from { box-shadow: 0 0 0 rgba(127, 255, 255, 0); } to { box-shadow: 0 0 18px rgba(127, 255, 255, 0.9); } }
   #controls button i { font-style: normal; font-size: 11px; opacity: 0.7; margin-right: 5px; padding: 1px 5px; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 5px; }
-  #air { position: fixed; top: 96px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 14px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  #air { position: fixed; top: 146px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-radius: 14px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
   #air div { width: 140px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
   #air i { display: block; height: 100%; background: linear-gradient(90deg, #ff5a5a, #ffd23f 30%, #5ad1ff 60%); border-radius: 4px; }
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
@@ -83,7 +98,7 @@
 <div id="speech"></div>
 <div id="flash"></div>
 <div id="air" class="glass"><span>🫧 Air</span><div><i id="airFill"></i></div></div>
-<div id="overlay"><h1 id="title"></h1><div id="sub"></div></div>
+<div id="overlay"><h1 id="title"></h1><div id="sub"></div><button id="againBtn">Paddle out again ▶</button></div>
 <div id="intro">
   <div class="intro-card">
     <div class="cover">
@@ -148,7 +163,7 @@
         <li><kbd>S</kbd> Dive under the walls (watch your air!)</li>
         <li><kbd>X</kbd> Fish for stingrays &nbsp; <kbd>T</kbd> Set a fish trap</li>
         <li><kbd>W</kbd> 🍺 &nbsp; <kbd>A</kbd> 🌿 &nbsp;Use at your own risk</li>
-        <li><kbd>Space</kbd> Pause &nbsp; <kbd>C</kbd> Camera</li>
+        <li><kbd>Space</kbd> Pause &nbsp; <kbd>C</kbd> Camera &nbsp; <kbd>M</kbd> Sound</li>
       </ul>
       <h2>What’s out there</h2>
       <ul class="teasers">
@@ -173,9 +188,13 @@
     <button id="fishBtn" class="glass"><i>X</i>🎣 <b id="fishCount">Fish</b></button>
     <button id="trapBtn" class="glass"><i>T</i>🪤 Trap</button>
   </div>
-  <button id="view" class="glass">Camera: Follow</button>
+  <div class="group">
+    <button id="pauseBtn" class="glass" aria-label="Pause">⏸</button>
+    <button id="muteBtn" class="glass" aria-label="Sound">🔊</button>
+    <button id="view" class="glass">Camera: Follow</button>
+  </div>
 </div>
-<div id="help">Arrows steer · W beer · A joint · S dive · D surf (↑ ↓ tricks) · X fish · T trap · Space pause · C camera</div>
+<div id="help">Arrows steer · W beer · A joint · S dive · D surf (↑ ↓ tricks) · X fish · T trap · Space pause · C camera · M sound</div>
 
 <script>
   // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
@@ -306,6 +325,107 @@ function levelCfg() {
     waveSpeed: Math.min(0.085, 0.06 + 0.005 * L),
   };
 }
+
+// ---------------------------------------------------------------- sound (all synthesized, so the single file still works offline)
+let actx = null, master = null, noiseBuf = null, muted = false, waka = 0;
+try { muted = localStorage.getItem('surfMute') === '1'; } catch (e) {}
+// Browsers only allow audio after a click or key press, so this is called from input handlers.
+function audio() {
+  if (!actx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    actx = new Ctx();
+    master = actx.createGain();
+    master.gain.value = muted ? 0 : 0.6;
+    master.connect(actx.destination);
+    startOcean();
+  }
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function setMuted(m) {
+  muted = m;
+  if (master) master.gain.value = m ? 0 : 0.6;
+  try { localStorage.setItem('surfMute', m ? '1' : '0'); } catch (e) {}
+}
+function tone(freq, dur, {type = 'square', vol = 0.1, slide = 0, delay = 0} = {}) {
+  if (!actx || muted) return;
+  const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+function noiseBuffer() {
+  if (!noiseBuf) {
+    noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return noiseBuf;
+}
+function hiss(dur, {vol = 0.2, freq = 800, q = 0.7, delay = 0, sweep = 0} = {}) {
+  if (!actx || muted) return;
+  const t = actx.currentTime + delay, src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+  src.buffer = noiseBuffer();
+  src.loop = true;
+  f.type = 'bandpass';
+  f.frequency.setValueAtTime(freq, t);
+  if (sweep) f.frequency.exponentialRampToValueAtTime(Math.max(60, freq + sweep), t + dur);
+  f.Q.value = q;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.2);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(master);
+  src.start(t);
+  src.stop(t + dur + 0.05);
+}
+// Gentle surf rolling in the background.
+function startOcean() {
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(), lfo = actx.createOscillator(), depth = actx.createGain();
+  src.buffer = noiseBuffer();
+  src.loop = true;
+  f.type = 'lowpass';
+  f.frequency.value = 420;
+  g.gain.value = 0.05;
+  lfo.frequency.value = 0.12;
+  depth.gain.value = 0.035;
+  lfo.connect(depth).connect(g.gain);
+  src.connect(f).connect(g).connect(master);
+  src.start();
+  lfo.start();
+}
+const sfx = {
+  chomp: () => tone(++waka % 2 ? 330 : 440, 0.07, {type: 'triangle', vol: 0.07, slide: 120}),
+  power: () => [523, 659, 784].forEach((f, i) => tone(f, 0.14, {vol: 0.05, delay: i * 0.07})),
+  eat: () => tone(220, 0.35, {type: 'sawtooth', vol: 0.06, slide: 1200}),
+  die: () => { tone(700, 1.3, {type: 'triangle', vol: 0.12, slide: -640}); hiss(0.8, {vol: 0.15, freq: 600, delay: 0.3, sweep: -400}); },
+  splash: (vol = 0.18) => hiss(0.45, {vol, freq: 1400, sweep: -900}),
+  wave: () => hiss(3.2, {vol: 0.28, freq: 380, q: 0.5, sweep: 500}),
+  warn: () => [0, 0.2].forEach(d => tone(660, 0.12, {type: 'triangle', vol: 0.07, delay: d})),
+  trick: () => tone(392, 0.35, {type: 'triangle', vol: 0.09, slide: 500}),
+  coin: () => { tone(988, 0.07, {vol: 0.05}); tone(1319, 0.22, {vol: 0.05, delay: 0.07}); },
+  treasure: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.25, {type: 'triangle', vol: 0.09, delay: i * 0.09})),
+  item: () => { tone(660, 0.08, {type: 'triangle', vol: 0.08}); tone(990, 0.15, {type: 'triangle', vol: 0.08, delay: 0.08}); },
+  pinch: () => tone(180, 0.18, {vol: 0.08, slide: -60}),
+  yeet: () => tone(300, 0.3, {vol: 0.06, slide: 900}),
+  fire: () => { hiss(1.2, {vol: 0.25, freq: 300, sweep: 2500}); tone(200, 0.9, {type: 'sawtooth', vol: 0.06, slide: 800}); },
+  boom: () => { hiss(1, {vol: 0.3, freq: 200, sweep: -150}); tone(90, 0.8, {type: 'sine', vol: 0.25, slide: -50}); },
+  shark: () => tone(70, 1.2, {type: 'sawtooth', vol: 0.12, slide: 40}),
+  gulp: () => tone(500, 0.18, {type: 'sine', vol: 0.12, slide: -380}),
+  cast: () => hiss(0.25, {vol: 0.1, freq: 3000, sweep: -2000}),
+  drink: () => [0, 0.12, 0.24].forEach(d => tone(240, 0.09, {type: 'sine', vol: 0.1, delay: d, slide: -60})),
+  cough: () => [0, 0.18].forEach(d => hiss(0.14, {vol: 0.18, freq: 900, delay: d})),
+  level: () => [523, 659, 784, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, {vol: 0.06, delay: i * 0.12})),
+  over: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.35, {type: 'triangle', vol: 0.1, delay: i * 0.25})),
+  disco: () => [0, 0.25, 0.5, 0.75].forEach(d => { tone(110, 0.15, {vol: 0.08, delay: d}); hiss(0.05, {vol: 0.08, freq: 8000, delay: d + 0.125}); }),
+  ufo: () => [0, 0.3, 0.6].forEach(d => tone(900, 0.3, {type: 'sine', vol: 0.06, delay: d, slide: -500})),
+  whale: () => tone(160, 2, {type: 'sine', vol: 0.12, slide: -90}),
+};
 
 // ---------------------------------------------------------------- game logic
 const UP = {x: 0, y: -1}, LEFT = {x: -1, y: 0}, DOWN = {x: 0, y: 1}, RIGHT = {x: 1, y: 0}, NONE = {x: 0, y: 0};
@@ -439,6 +559,7 @@ function ignite() {
   pointsLog = [];
   frighten();
   toast('🔥 ON FIRE! Triple points, extra speed, and the stingrays are terrified', 200);
+  sfx.fire();
 }
 
 const say = (line, frames = 160) => { speech = line; speechTime = frames; };
@@ -449,9 +570,11 @@ function useItem(type) {
   inv[type]--;
   if (type === 'beer') {
     beerTime = BEER_TIME;
+    sfx.drink();
     toast('🍺 Wasted! Controls are all over the place');
   } else {
     jointTime = JOINT_TIME;
+    sfx.cough();
     redEyes = JOINT_TIME + RED_EYES_EXTRA;
     if (!gfShark) {
       gfMad = JOINT_TIME + 240;
@@ -471,6 +594,7 @@ function startDive() {
   pac.surge = 0;
   pac.stun = 0;
   toast('🤿 Diving! Swim under the walls for coins and treasure', 100);
+  sfx.splash();
 }
 
 // ---- waves roll in from any side; you can ride them across the maze
@@ -482,6 +606,7 @@ const SIDE_NAMES = {'0,1': 'north', '0,-1': 'south', '1,0': 'west', '-1,0': 'eas
 function spawnWave(dir) {
   const axis = dir.y ? 'y' : 'x', sign = dir.x + dir.y, span = axis === 'y' ? H : W;
   wave = {dir, axis, sign, pos: sign > 0 ? -5 : span + 4};
+  sfx.wave();
 }
 
 // Press D any time a wave is on its way: you paddle out and pop up when it reaches you.
@@ -504,6 +629,7 @@ function startSurf() {
   pac.lastPos = wave.pos;
   pac.surge = pac.stun = pac.air = pac.combo = 0;
   pac.wantsSurf = false;
+  sfx.splash(0.25);
   toast('🏄 Riding! ← → carve · ↑ aerial 360 · ↓ backflip', 150);
 }
 
@@ -533,6 +659,7 @@ function landSurf() {
   queued = NONE;
   pac.mode = 'normal';
   pac.rayBlind = pac.crabSafe = 90;
+  sfx.splash();
   const bonus = 200 + 150 * pac.combo;
   addScore(bonus);
   popups.push({x: pac.x, y: pac.y, text: pac.combo ? `🏄 ${pac.combo}-TRICK RIDE +${bonus}` : `🏄 TUBE RIDE +${bonus}`, t: 80});
@@ -551,6 +678,7 @@ function nukeEnemies() {
   for (const c of crabs) if (!c.flung) { c.flung = 80; c.thrown = false; n++; }
   addScore(300 * n);
   flashTime = 40;
+  sfx.boom();
 }
 
 function updateStarfish() {
@@ -573,6 +701,7 @@ function updateStarfish() {
 function findTreasure(t) {
   t.found = true;
   nukeEnemies();
+  sfx.treasure();
   addScore(1000);
   gfGlam = true;
   gfMad = 0;
@@ -591,10 +720,12 @@ function gfEat(n, points) {
   gfForgive = 1;
   if (!gfShark && gfFish > SHARK_FISH) {
     gfShark = true;
+    sfx.shark();
     say('RAWRRR 🦈', 200);
     toast('🦈 She ate too much and turned into a SHARK! Don’t run into her', 220);
     flashTime = 30;
   } else if (!gfShark) {
+    sfx.gulp();
     say(FEED_LINES[Math.min(FEED_LINES.length - 1, Math.max(0, gfFat() - 1))], 170);
   }
 }
@@ -611,6 +742,7 @@ function castLine() {
   }
   if (!pick) { toast('🎣 Nothing biting. Get closer to a stingray', 70); pac.fishCool = 30; return; }
   pick.hooked = HOOK_TIME;
+  sfx.cast();
   pac.fishCool = 240;
   const gp = rpos(pick);
   popups.push({x: gp.x, y: gp.y, text: '🎣 HOOKED!', t: 50});
@@ -622,6 +754,7 @@ function placeTrap() {
   if (traps.some(t => t.x === pac.x && t.y === pac.y)) return;
   if (traps.length >= 3) traps.shift();
   traps.push({x: pac.x, y: pac.y, fish: 0, clock: 0});
+  sfx.splash(0.12);
   toast('🪤 Fish trap set! She’ll snack on it when she swims past', 100);
 }
 
@@ -637,8 +770,8 @@ function eatDot(x, y) {
   dots[y][x] = '';
   dotsLeft--;
   addScore((d === 'o' ? 50 : 10) * (discoTime > 0 ? 2 : 1));
-  if (d === 'o') frighten();
-  if (!dotsLeft) { state = 'clear'; timer = 150; }
+  if (d === 'o') { frighten(); sfx.power(); } else sfx.chomp();
+  if (!dotsLeft) { state = 'clear'; timer = 150; sfx.level(); }
 }
 
 // Move an entity toward the next tile; onArrive runs each time it reaches a tile center.
@@ -697,6 +830,7 @@ function escapeDir(x, y) {
 }
 
 function surface() {
+  sfx.splash(0.12);
   pac.mode = 'normal';
   pac.diveCool = DIVE_COOLDOWN;
 }
@@ -704,6 +838,7 @@ function surface() {
 function updateSurf() {
   if (pac.air > 0 && --pac.air === 0) {
     pac.combo++;
+    sfx.trick();
     const pts = 150 * pac.combo;
     addScore(pts);
     popups.push({x: pac.x, y: pac.y, text: `${TRICKS[pac.trick]}${pac.combo > 1 ? ` x${pac.combo}` : ''} +${pts}`, t: 60});
@@ -757,6 +892,7 @@ function pacArrive() {
     for (const c of coins) {
       if (c.taken || c.x !== pac.x || c.y !== pac.y) continue;
       c.taken = true;
+      sfx.coin();
       addScore(50);
       popups.push({x: c.x, y: c.y, text: '🪙 +50', t: 40});
     }
@@ -886,9 +1022,11 @@ function checkCollisions() {
       addScore(pts);
       popups.push({x: gp.x, y: gp.y, text: pts, t: 60});
       freeze = 30;
+      sfx.eat();
     } else {
       state = 'dying';
       timer = 90;
+      sfx.die();
       return;
     }
   }
@@ -906,8 +1044,10 @@ function checkCrabs() {
       c.thrown = false;
       addScore(100);
       popups.push({x: cp.x, y: cp.y, text: 'YEET +100', t: 60});
+      sfx.yeet();
     } else if (pac.crabSafe === 0) {
       pac.stun = 45;
+      sfx.pinch();
       pac.crabSafe = 120;
       popups.push({x: cp.x, y: cp.y, text: 'PINCHED!', t: 60});
     }
@@ -928,6 +1068,7 @@ function updateItems() {
   const pp = rpos(pac);
   items = items.filter(it => {
     if (Math.abs(pp.x - it.x) + Math.abs(pp.y - it.y) > 0.6) return true;
+    sfx.item();
     if (it.type === 'goggles') inv.dives += 2;
     else inv[it.type]++;
     addScore(100);
@@ -943,6 +1084,7 @@ function updateWaves(ts) {
     if (waveClock >= cfg.waveEvery - 180 && !waveWarned) {
       waveWarned = true;
       nextWaveDir = DIRS[Math.floor(Math.random() * 4)];
+      sfx.warn();
       toast(`🌊 Wave coming from the ${SIDE_NAMES[`${nextWaveDir.x},${nextWaveDir.y}`]}! Press D to surf it`);
     }
     if (waveClock >= cfg.waveEvery) { spawnWave(nextWaveDir); waveClock = 0; waveWarned = false; }
@@ -968,9 +1110,11 @@ function triggerEvent(forced) {
   lastEvent = e;
   if (e === 'disco') {
     discoTime = 480;
+    sfx.disco();
     toast('🪩 DISCO PARTY! Pearls are worth double');
   } else if (e === 'whale') {
     whale = {t: 0, side: Math.random() < 0.5 ? -1 : 1};
+    sfx.whale();
     waveWarned = true;
     nextWaveDir = DOWN;
     toast('🐋 WHALE BREACH! Big wave coming, press D to catch it');
@@ -981,6 +1125,7 @@ function triggerEvent(forced) {
     const g = targets.reduce((a, b) => ((rpos(a).x - pp.x) ** 2 + (rpos(a).y - pp.y) ** 2 < (rpos(b).x - pp.x) ** 2 + (rpos(b).y - pp.y) ** 2 ? a : b));
     g.abducted = 270;
     ufo = {t: 0, g: ghosts.indexOf(g)};
+    sfx.ufo();
     toast('🛸 Alien abduction! They took a stingray');
   }
 }
@@ -1011,10 +1156,16 @@ function step() {
   popups = popups.filter(p => p.t > 0);
   if (toastTime > 0) toastTime--;
   if (flashTime > 0) flashTime--;
-  if (state === 'ready') { if (--timer <= 0) state = 'play'; return; }
+  if (state === 'ready') {
+    if (--timer <= 0) {
+      state = 'play';
+      if (level === 1 && score === 0) toast('Chomp every pearl! Big glowing pearls let you eat the stingrays', 240);
+    }
+    return;
+  }
   if (state === 'dying') {
     if (--timer > 0) return;
-    if (--lives <= 0) state = 'over';
+    if (--lives <= 0) { state = 'over'; sfx.over(); }
     else { resetPositions(); state = 'ready'; timer = 90; }
     return;
   }
@@ -1076,7 +1227,8 @@ const wz = y => (y - (H - 1) / 2) * S;
 const deg = THREE.MathUtils.degToRad;
 
 const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+const LOW_END = matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700;
+renderer.setPixelRatio(Math.min(devicePixelRatio, LOW_END ? 1.25 : 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.5;
@@ -1132,8 +1284,8 @@ function makeWaterNormals() {
 }
 
 const water = new Water(new THREE.PlaneGeometry(10000, 10000), {
-  textureWidth: 1024,
-  textureHeight: 1024,
+  textureWidth: LOW_END ? 512 : 1024,
+  textureHeight: LOW_END ? 512 : 1024,
   waterNormals: makeWaterNormals(),
   sunDirection: new THREE.Vector3(0, 1, 0),
   sunColor: 0xfff0d0,
@@ -1154,7 +1306,7 @@ scene.add(water);
 
 const sunLight = new THREE.DirectionalLight(0xffe0b5, 3.4);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.mapSize.setScalar(LOW_END ? 1024 : 2048);
 Object.assign(sunLight.shadow.camera, {left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 200});
 sunLight.shadow.bias = -0.0004;
 sunLight.shadow.normalBias = 0.03;
@@ -2672,6 +2824,7 @@ function updateGirlfriend(dt) {
       if (pac.mode === 'normal' && pac.rayBlind === 0 && pacV.group.position.distanceTo(gfV.group.position) < 1.3) {
         state = 'dying';
         timer = 90;
+        sfx.die();
         toast('🦈 You ran into the shark!', 150);
       }
     }
@@ -2907,8 +3060,8 @@ function updateOverlay() {
   else if (state === 'ready') { title = 'READY!'; sub = dest().name; }
   else if (state === 'clear') title = 'LEVEL CLEAR!';
   else if (state === 'travel') { title = '✈️ Next stop'; sub = dest().name; dim = true; }
-  else if (state === 'over') { title = 'GAME OVER'; sub = `Score ${score} · Press Enter or tap to play again`; dim = true; }
-  else if (paused) { title = 'PAUSED'; sub = 'Press Space to resume'; dim = true; }
+  else if (state === 'over') { title = 'WIPEOUT!'; sub = `${score.toLocaleString()} points · made it to ${dest().name}${score >= best && score > 0 ? ' · 🏆 new best!' : ` · best ${best.toLocaleString()}`}`; dim = true; }
+  else if (paused) { title = 'PAUSED'; sub = 'Press Space or ▶ to resume'; dim = true; }
   setText('title', title);
   setText('sub', sub);
   $('overlay').classList.toggle('dim', dim);
@@ -2936,14 +3089,17 @@ function updateOverlay() {
   bubble.style.opacity = speechTime > 0 && gfV.group.visible && state !== 'over' ? 1 : 0;
   setText('speech', speech);
   const head = gfV.group.position.clone().add(new THREE.Vector3(0, 2.3, 0)).project(camera);
-  bubble.style.left = `${(head.x * 0.5 + 0.5) * innerWidth}px`;
-  bubble.style.top = `${(-head.y * 0.5 + 0.5) * innerHeight}px`;
+  bubble.style.left = `${Math.min(innerWidth - 120, Math.max(120, (head.x * 0.5 + 0.5) * innerWidth))}px`;
+  bubble.style.top = `${Math.min(innerHeight - 120, Math.max(150, (-head.y * 0.5 + 0.5) * innerHeight))}px`;
   setText('toast', toastMsg);
   $('toast').style.opacity = toastTime > 0 ? 1 : 0;
   $('haze').style.opacity = jointTime > 0 ? 1 : redEyes > 0 ? 0.35 : 0;
   $('smoke').style.opacity = jointTime > 0 ? 0.9 : redEyes > 0 ? 0.3 : 0;
   renderer.domElement.classList.toggle('high', jointTime > 0);
   document.body.classList.toggle('intro', state === 'start');
+  document.body.classList.toggle('over', state === 'over');
+  setText('pauseBtn', paused ? '▶' : '⏸');
+  setText('muteBtn', muted ? '🔇' : '🔊');
 }
 
 const popupEls = new Map();
@@ -2989,6 +3145,7 @@ function toggleCamera() {
   $('view').textContent = `Camera: ${camMode === 'follow' ? 'Follow' : 'Overview'}`;
 }
 document.addEventListener('keydown', e => {
+  audio();
   const k = e.key.toLowerCase();
   if (KEYS[k]) steer(KEYS[k]);
   else if (k === 'enter' && (state === 'start' || state === 'over')) newGame();
@@ -3000,10 +3157,11 @@ document.addEventListener('keydown', e => {
   else if (k === 'd') catchWave();
   else if (k === 'x') castLine();
   else if (k === 't') placeTrap();
+  else if (k === 'm') setMuted(!muted);
   else return;
   e.preventDefault();
 });
-for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave], ['fishBtn', castLine], ['trapBtn', placeTrap]]) {
+for (const [id, fn] of [['view', toggleCamera], ['beerBtn', () => useItem('beer')], ['jointBtn', () => useItem('joint')], ['diveBtn', startDive], ['surfBtn', catchWave], ['fishBtn', castLine], ['trapBtn', placeTrap], ['pauseBtn', () => { if (state === 'play') paused = !paused; }], ['muteBtn', () => setMuted(!muted)], ['againBtn', newGame]]) {
   $(id).addEventListener('click', e => { e.stopPropagation(); fn(); $(id).blur(); });
 }
 
@@ -3023,7 +3181,8 @@ canvas.addEventListener('touchmove', e => {
   touchStart = {x: t.clientX, y: t.clientY};
 }, {passive: false});
 canvas.addEventListener('click', () => { if (state === 'over') newGame(); });
-$('playBtn').addEventListener('click', () => { $('playBtn').blur(); newGame(); });
+$('playBtn').addEventListener('click', () => { audio(); $('playBtn').blur(); newGame(); });
+document.addEventListener('pointerdown', audio);
 
 // ---------------------------------------------------------------- main loop
 applyDestination();
@@ -3091,6 +3250,8 @@ window.pacSurf = {
   warp(n) { level = n; applyDestination(); startLevel(); },
   dive() { startDive(); },
   fish() { castLine(); },
+  gameOver() { lives = 1; state = 'dying'; timer = 1; },
+  get audio() { return {ctx: actx ? actx.state : 'none', muted}; },
   tp(x, y) { pac.x = x; pac.y = y; pac.p = 0; pac.dir = NONE; },
   go(dx, dy) { queued = {x: dx, y: dy}; },
   star() { const [x, y] = randomTile(2); starfish = {x, y, t: 0}; },

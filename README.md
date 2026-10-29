@@ -1,6 +1,6 @@
 # Surf 'n' Chomp
 
-A surf, snack & survive adventure: Pac-Man and his girlfriend surf through stone sea-wall mazes on open ocean, dodging stingrays, crabs, and monster waves. Built with [Three.js](https://threejs.org/).
+A surf, snack & survive adventure: Pac-Man and his girlfriend surf through stone sea-wall mazes on open ocean, dodging stingrays, crabs, and monster waves. Built with [Three.js](https://threejs.org/). All the sound effects are synthesized in the browser, so there are no audio files. Phones automatically get lighter graphics settings.
 
 ## Share it
 
@@ -28,7 +28,8 @@ Open `surf-n-chomp.html` (or `index.html`) in a browser and hit **Paddle out**.
 | D (or 🏄 button) | Surf the next wave. Press it any time a wave is coming and you'll pop up when it arrives. On the wave, ↑ = aerial 360, ↓ = backflip |
 | X (or 🎣 button) | Fish: hook the nearest stingray, reel it in, and feed it to your girlfriend |
 | T (or 🪤 button) | Drop a fish trap. It fills up over time, and she snacks on it when she swims past (up to 3 traps). |
-| Space / P | Pause |
+| Space / P (or ⏸ button) | Pause |
+| M (or 🔊 button) | Sound on/off |
 | C (or Camera button) | Switch between follow camera and overview |
 | Enter / tap | Start or restart |
 | Swipe | Steer on touch devices |
