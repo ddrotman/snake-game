@@ -3,25 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pac-Man Clone</title>
+<title>Pac-Man Surf 3D</title>
 <style>
-  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; color: #eee; font-family: system-ui, sans-serif; }
-  #hud { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 12px 16px; font-size: 18px; }
-  #hud b { color: #ffe000; }
-  canvas { max-width: calc(100vw - 32px); height: auto; touch-action: none; }
-  p { color: #aaa; font-size: 14px; margin: 10px 16px; text-align: center; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1622; color: #fff; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 9px 22px; border-radius: 22px; background: rgba(8, 18, 32, 0.38); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.16); font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; }
+  #hud span { white-space: nowrap; opacity: 0.9; }
+  #hud b { color: #ffe14d; font-variant-numeric: tabular-nums; margin-left: 6px; }
+  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 16px; pointer-events: none; transition: background 0.4s; text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55); }
+  #overlay.dim { background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55)); }
+  #title { margin: 0; font-size: clamp(38px, 9vw, 104px); font-weight: 900; letter-spacing: 0.05em; color: #ffe14d; }
+  #sub { margin-top: 12px; font-size: clamp(15px, 2.3vw, 22px); }
+  #help { position: fixed; bottom: 12px; left: 16px; right: 16px; text-align: center; font-size: 13px; opacity: 0.8; pointer-events: none; text-shadow: 0 1px 6px #000; }
+  #view { position: fixed; right: 16px; bottom: 40px; padding: 8px 14px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(8, 18, 32, 0.4); color: #fff; font: inherit; font-size: 13px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); cursor: pointer; }
+  .popup { position: fixed; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; color: #9ff; text-shadow: 0 0 12px #0ff; pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="hud">
-  <span>Score <b id="score">0</b></span>
-  <span>Best <b id="best">0</b></span>
-  <span>Level <b id="level">1</b></span>
-  <span>Lives <b id="lives">3</b></span>
+  <span>Score<b id="score">0</b></span>
+  <span>Best<b id="best">0</b></span>
+  <span>Level<b id="level">1</b></span>
+  <span>Lives<b id="lives">3</b></span>
 </div>
-<canvas id="game"></canvas>
-<p>Arrow keys / WASD to move &middot; Space to pause &middot; Enter to start &middot; Swipe on mobile</p>
+<div id="overlay" class="dim"><h1 id="title">Loading…</h1><div id="sub"></div></div>
+<button id="view">Camera: Follow</button>
+<div id="help">Arrows / WASD move · Space pause · C camera · Enter start · Swipe on mobile</div>
+
 <script>
+  // Shown if the 3D engine never loads (offline, blocked CDN, no WebGL).
+  setTimeout(() => {
+    if (!window.__started) {
+      document.getElementById('title').textContent = 'Couldn’t start 3D';
+      document.getElementById('sub').textContent = 'This game needs WebGL and an internet connection to load Three.js.';
+    }
+  }, 10000);
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { Water } from 'three/addons/objects/Water.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ---------------------------------------------------------------- game logic
 // # wall, . dot, o power pellet, - ghost-house door, space = empty path
 const MAP = [
   '###################',
@@ -46,21 +80,17 @@ const MAP = [
   '#.................#',
   '###################',
 ];
-const W = 19, H = 21, T = 24;
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-canvas.width = W * T;
-canvas.height = H * T;
+const W = 19, H = 21;
 
 const UP = {x: 0, y: -1}, LEFT = {x: -1, y: 0}, DOWN = {x: 0, y: 1}, RIGHT = {x: 1, y: 0}, NONE = {x: 0, y: 0};
 const DIRS = [UP, LEFT, DOWN, RIGHT];
 const MODES = [7, 20, 7, 20, 5, 20, 5, Infinity]; // seconds, alternating scatter / chase
 const HOME = {x: 9, y: 9}, EXIT = {x: 9, y: 7};
 const GHOSTS = [
-  {name: 'blinky', color: '#ff0000', start: {x: 9, y: 7}, dir: LEFT, corner: {x: W - 2, y: -2}, release: 0},
-  {name: 'pinky', color: '#ffb8ff', start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 2},
-  {name: 'inky', color: '#00ffff', start: {x: 8, y: 9}, dir: RIGHT, corner: {x: W - 1, y: H + 1}, release: 5},
-  {name: 'clyde', color: '#ffb852', start: {x: 10, y: 9}, dir: LEFT, corner: {x: 0, y: H + 1}, release: 8},
+  {name: 'blinky', color: 0xff2a2a, start: {x: 9, y: 7}, dir: LEFT, corner: {x: W - 2, y: -2}, release: 0},
+  {name: 'pinky', color: 0xff8ce8, start: {x: 9, y: 9}, dir: UP, corner: {x: 1, y: -2}, release: 2},
+  {name: 'inky', color: 0x2ff3ff, start: {x: 8, y: 9}, dir: RIGHT, corner: {x: W - 1, y: H + 1}, release: 5},
+  {name: 'clyde', color: 0xffa538, start: {x: 10, y: 9}, dir: LEFT, corner: {x: 0, y: H + 1}, release: 8},
 ];
 
 let dots, dotsLeft, pac, queued, ghosts, popups;
@@ -266,164 +296,521 @@ function step() {
   checkCollisions();
 }
 
-function drawMaze() {
-  const flash = state === 'clear' && Math.floor(timer / 15) % 2;
-  ctx.fillStyle = '#000018';
-  ctx.strokeStyle = flash ? '#fff' : '#2121de';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (MAP[y][x] !== '#') continue;
-      const px = x * T, py = y * T;
-      ctx.fillRect(px, py, T, T);
-      if (!isWall(x, y - 1)) { ctx.moveTo(px, py); ctx.lineTo(px + T, py); }
-      if (!isWall(x, y + 1)) { ctx.moveTo(px, py + T); ctx.lineTo(px + T, py + T); }
-      if (!isWall(x - 1, y)) { ctx.moveTo(px, py); ctx.lineTo(px, py + T); }
-      if (!isWall(x + 1, y)) { ctx.moveTo(px + T, py); ctx.lineTo(px + T, py + T); }
+// ---------------------------------------------------------------- renderer, sky, ocean
+const S = 2; // world units per maze tile
+const wx = x => (x - (W - 1) / 2) * S;
+const wz = y => (y - (H - 1) / 2) * S;
+
+const renderer = new THREE.WebGLRenderer({antialias: true, powerPreference: 'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.5;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 20000);
+
+// Golden-hour sun, low in front of the camera so the ocean glitters.
+const sun = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - 17), THREE.MathUtils.degToRad(200));
+
+const sky = new Sky();
+sky.scale.setScalar(10000);
+const su = sky.material.uniforms;
+su.turbidity.value = 6;
+su.rayleigh.value = 1.6;
+su.mieCoefficient.value = 0.005;
+su.mieDirectionalG.value = 0.86;
+su.sunPosition.value.copy(sun);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.add(sky);
+scene.environment = pmrem.fromScene(envScene).texture;
+scene.add(sky);
+
+// Tileable ocean normal map built from a sum of integer-frequency waves.
+function makeWaterNormals() {
+  const N = 256, canvas = document.createElement('canvas');
+  canvas.width = canvas.height = N;
+  const g = canvas.getContext('2d'), img = g.createImageData(N, N);
+  const waves = [];
+  while (waves.length < 48) {
+    const a = Math.random() * Math.PI * 2, f = 1 + Math.random() * Math.random() * 22;
+    const kx = Math.round(Math.cos(a) * f), ky = Math.round(Math.sin(a) * f);
+    if (kx || ky) waves.push({kx, ky, amp: 1 / (Math.hypot(kx, ky) + 1.5), ph: Math.random() * Math.PI * 2});
+  }
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let dx = 0, dy = 0;
+      for (const w of waves) {
+        const c = Math.cos(2 * Math.PI * (w.kx * x + w.ky * y) / N + w.ph) * w.amp;
+        dx += c * w.kx;
+        dy += c * w.ky;
+      }
+      const n = new THREE.Vector3(-dx * 0.22, -dy * 0.22, 1).normalize();
+      const i = (y * N + x) * 4;
+      img.data[i] = (n.x * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (n.y * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (n.z * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
     }
   }
-  ctx.stroke();
-  ctx.fillStyle = '#ffb8ff';
-  ctx.fillRect(9 * T, 8 * T + T / 2 - 2, T, 4);
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
 }
 
-function drawDots() {
-  ctx.fillStyle = '#ffb8ae';
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = dots[y][x];
-      if (!d) continue;
-      const cx = (x + 0.5) * T, cy = (y + 0.5) * T;
-      if (d === '.') {
-        ctx.fillRect(cx - 2, cy - 2, 4, 4);
-      } else if (state !== 'play' || Math.floor(frame / 12) % 2) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, T * 0.3, 0, Math.PI * 2);
-        ctx.fill();
+const water = new Water(new THREE.PlaneGeometry(10000, 10000), {
+  textureWidth: 1024,
+  textureHeight: 1024,
+  waterNormals: makeWaterNormals(),
+  sunDirection: sun.clone().normalize(),
+  sunColor: 0xfff0d0,
+  waterColor: 0x0a5f6e,
+  distortionScale: 1.1,
+  fog: false,
+});
+// The stock shader reflects 30% everywhere and its 8-bit mirror target clips the
+// HDR sky to white; use water-like Fresnel, tint the reflection, keep the sun glint.
+water.material.fragmentShader = water.material.fragmentShader
+  .replace('float rf0 = 0.3;', 'float rf0 = 0.06;')
+  .replace('sunColor * diffuseLight * 0.3 + scatter', 'sunColor * diffuseLight * 0.05 + scatter')
+  .replace('vec3( 0.1 ) + reflectionSample * 0.9', 'reflectionSample * vec3( 0.5, 0.68, 0.8 )')
+  .replace('vec3 outgoingLight = albedo;', 'vec3 outgoingLight = albedo + specularLight * 0.45;');
+water.rotation.x = -Math.PI / 2;
+water.material.uniforms.size.value = 2.6;
+scene.add(water);
+
+const sunLight = new THREE.DirectionalLight(0xffe0b5, 3.4);
+sunLight.position.copy(sun).multiplyScalar(80);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+Object.assign(sunLight.shadow.camera, {left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 200});
+sunLight.shadow.bias = -0.0004;
+sunLight.shadow.normalBias = 0.03;
+scene.add(sunLight);
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x0b3a44, 0.5));
+
+// ---------------------------------------------------------------- stone sea walls
+function valueNoise(cells) {
+  const grid = Array.from({length: cells * cells}, Math.random);
+  const at = (x, y) => grid[((y % cells) + cells) % cells * cells + ((x % cells) + cells) % cells];
+  return (u, v) => {
+    const fx = u * cells, fy = v * cells, x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * sx;
+    const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * sx;
+    return a + (b - a) * sy;
+  };
+}
+
+function makeStoneTextures() {
+  const N = 512;
+  const layers = [4, 8, 16, 32, 64, 128].map(valueNoise);
+  const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N; return c; };
+  const colorC = mk(), roughC = mk(), bumpC = mk();
+  const ci = colorC.getContext('2d').createImageData(N, N);
+  const ri = roughC.getContext('2d').createImageData(N, N);
+  const bi = bumpC.getContext('2d').createImageData(N, N);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let h = 0, amp = 0.5;
+      for (const n of layers) { h += n(x / N, y / N) * amp; amp *= 0.5; }
+      const grain = Math.random() * 0.08;
+      const pit = h < 0.38 ? (0.38 - h) * 2.2 : 0;
+      const t = Math.min(1, Math.max(0, h * 1.2 - 0.1 + grain - pit));
+      const i = (y * N + x) * 4;
+      ci.data[i] = 98 + t * 112;
+      ci.data[i + 1] = 84 + t * 88;
+      ci.data[i + 2] = 64 + t * 56;
+      ri.data[i] = ri.data[i + 1] = ri.data[i + 2] = 150 + (1 - t) * 90;
+      bi.data[i] = bi.data[i + 1] = bi.data[i + 2] = (h - pit * 0.6 + grain * 0.5) * 255;
+      ci.data[i + 3] = ri.data[i + 3] = bi.data[i + 3] = 255;
+    }
+  }
+  colorC.getContext('2d').putImageData(ci, 0, 0);
+  roughC.getContext('2d').putImageData(ri, 0, 0);
+  bumpC.getContext('2d').putImageData(bi, 0, 0);
+  const map = new THREE.CanvasTexture(colorC);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const out = {map, roughnessMap: new THREE.CanvasTexture(roughC), bumpMap: new THREE.CanvasTexture(bumpC)};
+  for (const t of Object.values(out)) t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return out;
+}
+
+const WALL_TOP = 1.2, WALL_H = 2.8;
+const wallGeo = new RoundedBoxGeometry(S * 0.995, WALL_H, S * 0.995, 3, 0.09);
+{
+  // Darker, algae-tinted stone toward the waterline.
+  const pos = wallGeo.attributes.position, colors = new Float32Array(pos.count * 3);
+  const wet = new THREE.Color(0x3c5048), dry = new THREE.Color(0xffffff), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    c.lerpColors(wet, dry, THREE.MathUtils.smoothstep(pos.getY(i), -WALL_H / 2, WALL_H / 2));
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  wallGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+const wallMat = new THREE.MeshStandardMaterial({...makeStoneTextures(), vertexColors: true, roughness: 1, bumpScale: 4, envMapIntensity: 0.45});
+const wallTiles = [];
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (MAP[y][x] === '#') wallTiles.push([x, y]);
+const walls = new THREE.InstancedMesh(wallGeo, wallMat, wallTiles.length);
+{
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  wallTiles.forEach(([x, y], i) => {
+    e.set(0, (Math.random() - 0.5) * 0.01, 0);
+    q.setFromEuler(e);
+    m.compose(new THREE.Vector3(wx(x), WALL_TOP - WALL_H / 2 + (Math.random() - 0.5) * 0.03, wz(y)), q, new THREE.Vector3(1, 1, 1));
+    walls.setMatrixAt(i, m);
+  });
+}
+walls.castShadow = walls.receiveShadow = true;
+scene.add(walls);
+
+// Neon trim along every top edge that faces open water.
+const trimMat = new THREE.MeshStandardMaterial({color: 0x000000, emissive: 0x2b5cff, emissiveIntensity: 5});
+const trims = [];
+{
+  const e = 0.14;
+  for (const [x, y] of wallTiles) {
+    for (const n of DIRS) {
+      if (isWall(x + n.x, y + n.y)) continue;
+      const t = {x: n.y, y: n.x}; // tangent along the edge
+      let ends = [];
+      for (const s of [-1, 1]) {
+        const ax = x + s * t.x, ay = y + s * t.y;
+        if (!isWall(ax, ay)) ends.push(s * (S / 2 - e));
+        else if (isWall(ax + n.x, ay + n.y)) ends.push(s * (S / 2 + e));
+        else ends.push(s * S / 2);
+      }
+      const mid = (ends[0] + ends[1]) / 2, len = ends[1] - ends[0];
+      trims.push({
+        pos: new THREE.Vector3(wx(x) + n.x * (S / 2 - e) + t.x * mid, WALL_TOP + 0.01, wz(y) + n.y * (S / 2 - e) + t.y * mid),
+        scale: new THREE.Vector3(t.x ? len : 0.09, 0.07, t.y ? len : 0.09),
+      });
+    }
+  }
+}
+const trimMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), trimMat, trims.length);
+trims.forEach((t, i) => trimMesh.setMatrixAt(i, new THREE.Matrix4().compose(t.pos, new THREE.Quaternion(), t.scale)));
+scene.add(trimMesh);
+
+const door = new THREE.Mesh(new THREE.BoxGeometry(S, 0.12, 0.12), new THREE.MeshStandardMaterial({color: 0, emissive: 0xff7be0, emissiveIntensity: 5}));
+door.position.set(wx(9), 0.7, wz(8));
+scene.add(door);
+
+// ---------------------------------------------------------------- floating pearls
+const dotTiles = [], powerTiles = [];
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  if (MAP[y][x] === '.') dotTiles.push([x, y]);
+  if (MAP[y][x] === 'o') powerTiles.push([x, y]);
+}
+const pearlMat = new THREE.MeshStandardMaterial({color: 0xfff4de, emissive: 0xffc580, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0});
+const dotMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.14, 16, 12), pearlMat, dotTiles.length);
+const powerMat = new THREE.MeshStandardMaterial({color: 0xfff8e8, emissive: 0xffe2a0, emissiveIntensity: 4, roughness: 0.1});
+const powerMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.36, 32, 24), powerMat, powerTiles.length);
+dotMesh.frustumCulled = powerMesh.frustumCulled = false;
+scene.add(dotMesh, powerMesh);
+
+// ---------------------------------------------------------------- surfing Pac-Man
+const pacGroup = new THREE.Group(), rider = new THREE.Group(), body = new THREE.Group();
+pacGroup.add(rider);
+scene.add(pacGroup);
+
+const boardMat = new THREE.MeshPhysicalMaterial({color: 0xf6f3ea, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.08});
+const board = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 20), boardMat);
+board.scale.set(0.5, 0.08, 1.25);
+const stripe = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 20), new THREE.MeshPhysicalMaterial({color: 0x0aa5c8, roughness: 0.3, clearcoat: 1}));
+stripe.scale.set(0.08, 0.087, 1.19);
+const fin = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.22, 0.22), boardMat);
+fin.position.set(0, -0.12, -0.95);
+rider.add(board, stripe, fin);
+
+const R = 0.64;
+const pacMat = new THREE.MeshPhysicalMaterial({color: 0xffb300, roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.2});
+const mouthMat = new THREE.MeshStandardMaterial({color: 0x4a0a10, roughness: 0.7});
+const upper = new THREE.Group(), lower = new THREE.Group();
+upper.add(new THREE.Mesh(new THREE.SphereGeometry(R, 56, 28, 0, Math.PI * 2, 0, Math.PI / 2), pacMat));
+lower.add(new THREE.Mesh(new THREE.SphereGeometry(R, 56, 28, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), pacMat));
+const capGeo = new THREE.CircleGeometry(R * 0.995, 56);
+const upperCap = new THREE.Mesh(capGeo, mouthMat);
+upperCap.rotation.x = Math.PI / 2;
+const lowerCap = new THREE.Mesh(capGeo, mouthMat);
+lowerCap.rotation.x = -Math.PI / 2;
+upper.add(upperCap);
+lower.add(lowerCap);
+const eyeMat = new THREE.MeshPhysicalMaterial({color: 0x111111, roughness: 0.1, clearcoat: 1});
+for (const sx of [-1, 1]) {
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 20, 14), eyeMat);
+  eye.position.set(sx * 0.21, 0.36, 0.34).normalize().multiplyScalar(R * 0.97);
+  upper.add(eye);
+}
+body.add(upper, lower);
+body.position.y = 0.08 + R * 0.92;
+rider.add(body);
+pacGroup.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+// ---------------------------------------------------------------- ghosts
+function makeGhost(color) {
+  const group = new THREE.Group(), r = 0.62, h = 0.55;
+  const mat = new THREE.MeshPhysicalMaterial({color, emissive: color, emissiveIntensity: 0.45, roughness: 0.22, clearcoat: 1, transparent: true, opacity: 0.9, side: THREE.DoubleSide});
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+  dome.position.y = h;
+  const skirtGeo = new THREE.CylinderGeometry(r, r * 1.1, h, 48, 3, true);
+  const skirt = new THREE.Mesh(skirtGeo, mat);
+  skirt.position.y = h / 2;
+  const pos = skirtGeo.attributes.position, hem = [];
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getY(i) < -h / 2 + 1e-4) hem.push({i, angle: Math.atan2(pos.getZ(i), pos.getX(i))});
+  }
+  const eyeWhite = new THREE.MeshPhysicalMaterial({color: 0xffffff, roughness: 0.15, clearcoat: 1});
+  const pupilMat = new THREE.MeshPhysicalMaterial({color: 0x1530d8, roughness: 0.1, clearcoat: 1});
+  const eyes = [], pupils = [];
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.17, 24, 16), eyeWhite);
+    eye.position.set(sx * 0.23, 0.78, 0.45);
+    eye.scale.set(1, 1.2, 0.8);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), pupilMat);
+    pupil.position.set(sx * 0.23, 0.78, 0.6);
+    eyes.push(eye);
+    pupils.push(pupil);
+    group.add(eye, pupil);
+  }
+  const light = new THREE.PointLight(color, 10, 7, 2);
+  light.position.y = 0.7;
+  group.add(dome, skirt, light);
+  dome.castShadow = skirt.castShadow = true;
+  scene.add(group);
+  return {group, mat, base: new THREE.Color(color), dome, skirt, skirtGeo, hem, eyes, pupils, eyeWhite, light, heading: 0};
+}
+const ghostViews = GHOSTS.map(g => makeGhost(g.color));
+
+// ---------------------------------------------------------------- spray & wake particles
+const MAXP = 500;
+const foam = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.4, emissive: 0x8fb6c8, emissiveIntensity: 0.35}), MAXP);
+foam.frustumCulled = false;
+scene.add(foam);
+const particles = [];
+function spawn(p, v, size, life) {
+  if (particles.length >= MAXP) particles.shift();
+  particles.push({p, v, size, life, max: life});
+}
+
+// ---------------------------------------------------------------- post-processing
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.5, 0.95);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ---------------------------------------------------------------- per-frame visuals
+let time = 0, camMode = 'follow', pacHeading = Math.PI * 1.5, lean = 0;
+const camPos = new THREE.Vector3(0, 70, 60), camLook = new THREE.Vector3();
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3();
+const headingOf = d => Math.atan2(d.x, d.y);
+const angleDiff = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+
+function updatePearls() {
+  dotTiles.forEach(([x, y], i) => {
+    const s = dots[y][x] ? 1 : 0;
+    tmpV.set(wx(x), 0.5 + Math.sin(time * 2 + x * 0.7 + y * 1.3) * 0.07, wz(y));
+    dotMesh.setMatrixAt(i, tmpM.compose(tmpV, tmpQ.identity(), tmpS.setScalar(s)));
+  });
+  powerTiles.forEach(([x, y], i) => {
+    const s = dots[y][x] ? 1 + Math.sin(time * 6) * 0.15 : 0;
+    tmpV.set(wx(x), 0.65 + Math.sin(time * 2.4 + x) * 0.1, wz(y));
+    powerMesh.setMatrixAt(i, tmpM.compose(tmpV, tmpQ.identity(), tmpS.setScalar(s)));
+  });
+  dotMesh.instanceMatrix.needsUpdate = powerMesh.instanceMatrix.needsUpdate = true;
+}
+
+function updatePacView(dt) {
+  const {x, y} = rpos(pac);
+  pacGroup.position.set(wx(x), 0, wz(y));
+  pacGroup.visible = state !== 'over';
+  const moving = state === 'play' && !paused && freeze === 0 && (pac.dir.x || pac.dir.y);
+
+  const diff = angleDiff(pacHeading, headingOf(pac.face));
+  const turn = diff * Math.min(1, dt * 12);
+  pacHeading += turn;
+  pacGroup.rotation.y = pacHeading;
+  lean += (-turn * 9 - lean) * Math.min(1, dt * 8);
+
+  if (state === 'dying') {
+    const k = 1 - timer / 90;
+    rider.position.y = 0.12 - k * k * 1.6;
+    rider.rotation.set(k * 1.2, 0, k * 5);
+    upper.rotation.x = -k * 1.4;
+    lower.rotation.x = k * 1.4;
+    return;
+  }
+  rider.position.y = 0.12 + Math.sin(time * 3.1) * 0.05;
+  rider.rotation.set(Math.sin(time * 2.3) * 0.05 - (moving ? 0.06 : 0), 0, lean + Math.sin(time * 1.7) * 0.04);
+  const mouth = moving ? 0.08 + Math.abs(Math.sin(frame * 0.3)) * 0.55 : 0.28;
+  upper.rotation.x = -mouth;
+  lower.rotation.x = mouth;
+
+  if (moving) {
+    const fwd = tmpV.set(Math.sin(pacHeading), 0, Math.cos(pacHeading)).clone();
+    const side = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    const base = pacGroup.position;
+    for (const s of [-1, 1]) {
+      const p = base.clone().addScaledVector(fwd, -0.7).addScaledVector(side, s * 0.3);
+      p.y = 0.08;
+      const v = side.clone().multiplyScalar(s * (0.02 + Math.random() * 0.02)).addScaledVector(fwd, -0.01);
+      v.y = 0.02 + Math.random() * 0.03;
+      spawn(p, v, 0.08 + Math.random() * 0.08, 50 + Math.random() * 40);
+    }
+    if (Math.abs(turn) > 0.03) {
+      const out = Math.sign(turn);
+      for (let i = 0; i < 6; i++) {
+        const p = base.clone().addScaledVector(side, -out * 0.4);
+        p.y = 0.2;
+        const v = side.clone().multiplyScalar(-out * (0.05 + Math.random() * 0.06)).addScaledVector(fwd, (Math.random() - 0.5) * 0.06);
+        v.y = 0.08 + Math.random() * 0.1;
+        spawn(p, v, 0.06 + Math.random() * 0.07, 40 + Math.random() * 20);
       }
     }
   }
 }
 
-function drawPac() {
-  if (state === 'over') return;
-  const {x, y} = rpos(pac);
-  const cx = (x + 0.5) * T, cy = (y + 0.5) * T;
-  let mouth, ang;
-  if (state === 'dying') {
-    mouth = 0.1 + (1 - timer / 90) * Math.PI;
-    ang = -Math.PI / 2;
-  } else {
-    const moving = state === 'play' && !paused && (pac.dir.x || pac.dir.y);
-    mouth = moving ? 0.05 + Math.abs(Math.sin(frame * 0.3)) * 0.7 : 0.35;
-    ang = Math.atan2(pac.face.y, pac.face.x);
-  }
-  if (mouth >= Math.PI) return;
-  ctx.fillStyle = '#ffe000';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, T * 0.45, ang + mouth, ang + 2 * Math.PI - mouth);
-  ctx.closePath();
-  ctx.fill();
-}
-
-function drawGhost(g) {
-  const {x, y} = rpos(g);
-  const px = x * T, py = y * T, cx = px + T / 2;
+function updateGhosts(dt) {
   const flashing = frightTime < 120 && Math.floor(frame / 10) % 2;
-  if (g.state !== 'eaten') {
-    const l = px + T * 0.05, r = px + T * 0.95, bottom = py + T * 0.95;
-    ctx.fillStyle = g.fright ? (flashing ? '#fff' : '#2121ff') : g.color;
-    ctx.beginPath();
-    ctx.arc(cx, py + T * 0.45, T * 0.45, Math.PI, 0);
-    ctx.lineTo(r, bottom);
-    for (let i = 1; i <= 6; i++) ctx.lineTo(r - (r - l) * i / 6, i % 2 ? bottom - T * 0.15 : bottom);
-    ctx.closePath();
-    ctx.fill();
-  }
-  if (g.fright) {
-    const c = flashing ? '#f00' : '#ffb8ae';
-    ctx.fillStyle = ctx.strokeStyle = c;
-    ctx.fillRect(cx - T * 0.2, py + T * 0.32, T * 0.12, T * 0.12);
-    ctx.fillRect(cx + T * 0.08, py + T * 0.32, T * 0.12, T * 0.12);
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(cx - T * 0.3, py + T * 0.7);
-    for (let i = 1; i <= 6; i++) ctx.lineTo(cx - T * 0.3 + i * T * 0.1, py + T * (i % 2 ? 0.62 : 0.7));
-    ctx.stroke();
-    return;
-  }
-  const d = g.dir, ey = py + T * 0.4;
-  for (const ex of [cx - T * 0.18, cx + T * 0.18]) {
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(ex + d.x * T * 0.04, ey + d.y * T * 0.04, T * 0.13, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#2121de';
-    ctx.beginPath();
-    ctx.arc(ex + d.x * T * 0.09, ey + d.y * T * 0.09, T * 0.065, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ghosts.forEach((g, i) => {
+    const v = ghostViews[i];
+    const {x, y} = rpos(g);
+    v.group.visible = state !== 'clear' && state !== 'dying';
+    v.group.position.set(wx(x), 0.25 + Math.sin(time * 2.6 + i * 1.7) * 0.08, wz(y));
+    if (g.dir.x || g.dir.y) v.heading += angleDiff(v.heading, headingOf(g.dir)) * Math.min(1, dt * 10);
+    v.group.rotation.y = v.heading;
+
+    const eaten = g.state === 'eaten';
+    v.dome.visible = v.skirt.visible = !eaten;
+    const col = g.fright ? (flashing ? 0xffffff : 0x1d3bff) : null;
+    v.mat.color.set(col ?? v.base);
+    v.mat.emissive.set(col ?? v.base);
+    v.light.color.set(col ?? v.base);
+    v.light.intensity = eaten ? 0 : 10;
+    v.pupils.forEach(p => { p.visible = !g.fright; });
+    v.eyes.forEach(e => e.scale.set(g.fright ? 0.55 : 1, g.fright ? 0.55 : 1.2, g.fright ? 0.55 : 0.8));
+    v.eyeWhite.color.set(g.fright ? 0xffc8a8 : 0xffffff);
+
+    const pos = v.skirtGeo.attributes.position;
+    for (const {i: vi, angle} of v.hem) pos.setY(vi, -0.275 + Math.sin(angle * 8 + time * 9) * 0.06);
+    pos.needsUpdate = true;
+  });
 }
 
-function drawText(text, y, color, size) {
-  ctx.fillStyle = color;
-  ctx.font = `bold ${size}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, canvas.width / 2, y);
+function updateParticles() {
+  for (const q of particles) {
+    q.p.add(q.v);
+    if (q.p.y > 0.05) q.v.y -= 0.008;
+    else { q.p.y = 0.05; q.v.y = 0; q.v.multiplyScalar(0.9); }
+    q.v.x *= 0.97;
+    q.v.z *= 0.97;
+    q.life--;
+  }
+  while (particles.length && particles[0].life <= 0) particles.shift();
+  for (let i = 0; i < MAXP; i++) {
+    const q = particles[i];
+    const s = q && q.life > 0 ? q.size * Math.sqrt(q.life / q.max) * (1.6 - q.life / q.max) : 0;
+    foam.setMatrixAt(i, tmpM.compose(q ? q.p : tmpV.set(0, -10, 0), tmpQ.identity(), tmpS.set(s, s * 0.7, s)));
+  }
+  foam.instanceMatrix.needsUpdate = true;
 }
 
-function draw() {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawMaze();
-  drawDots();
-  if (state !== 'clear' && state !== 'dying') ghosts.forEach(drawGhost);
-  drawPac();
+function updateCamera(dt) {
+  let pos, look;
+  if (state === 'start') {
+    const a = time * 0.07;
+    look = new THREE.Vector3(0, 5, 0);
+    pos = new THREE.Vector3(Math.sin(a) * 44, 17, Math.cos(a) * 44);
+  } else if (camMode === 'overview' || state === 'over') {
+    const fit = Math.max(1, 1.25 / camera.aspect);
+    look = new THREE.Vector3(0, 0, 2);
+    pos = new THREE.Vector3(0, 46 * fit, 30 * fit);
+  } else {
+    const p = pacGroup.position;
+    const fit = Math.max(1, 0.9 / camera.aspect);
+    look = new THREE.Vector3(p.x * 0.8, 0, p.z * 0.8 - 1);
+    pos = new THREE.Vector3(p.x * 0.8, 16 * fit, p.z * 0.8 + 13 * fit);
+  }
+  camPos.lerp(pos, 1 - Math.exp(-dt * 2.8));
+  camLook.lerp(look, 1 - Math.exp(-dt * 4.2));
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+}
 
-  ctx.fillStyle = '#0ff';
-  ctx.font = 'bold 12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (const p of popups) ctx.fillText(p.text, (p.x + 0.5) * T, (p.y + 0.5) * T);
+// ---------------------------------------------------------------- HUD & overlays
+const $ = id => document.getElementById(id);
+const hudCache = {};
+function setText(id, value) {
+  if (hudCache[id] !== value) { hudCache[id] = value; $(id).textContent = value; }
+}
 
-  if (state === 'ready') drawText('READY!', 11.5 * T, '#ffe000', 20);
-  if (state === 'start' || state === 'over' || paused) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const mid = canvas.height / 2;
-    if (state === 'start') {
-      drawText('PAC-MAN', mid - 30, '#ffe000', 40);
-      drawText('Press Enter or tap to start', mid + 20, '#fff', 18);
-    } else if (state === 'over') {
-      drawText('GAME OVER', mid - 40, '#f00', 36);
-      drawText(`Score: ${score}`, mid + 5, '#fff', 20);
-      drawText('Press Enter or tap to play again', mid + 40, '#fff', 16);
-    } else {
-      drawText('PAUSED', mid - 10, '#fff', 32);
-      drawText('Press Space to resume', mid + 25, '#fff', 16);
+function updateOverlay() {
+  let title = '', sub = '', dim = false;
+  if (state === 'start') { title = 'PAC-MAN SURF'; sub = 'Press Enter or tap to start'; dim = true; }
+  else if (state === 'ready') title = 'READY!';
+  else if (state === 'clear') title = 'LEVEL CLEAR!';
+  else if (state === 'over') { title = 'GAME OVER'; sub = `Score ${score} · Press Enter or tap to play again`; dim = true; }
+  else if (paused) { title = 'PAUSED'; sub = 'Press Space to resume'; dim = true; }
+  setText('title', title);
+  setText('sub', sub);
+  $('overlay').classList.toggle('dim', dim);
+  setText('score', score);
+  setText('best', best);
+  setText('level', level);
+  setText('lives', lives);
+}
+
+const popupEls = new Map();
+function updatePopups() {
+  for (const [p, el] of popupEls) if (!popups.includes(p)) { el.remove(); popupEls.delete(p); }
+  for (const p of popups) {
+    let el = popupEls.get(p);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'popup';
+      el.textContent = p.text;
+      document.body.appendChild(el);
+      popupEls.set(p, el);
     }
+    const v = new THREE.Vector3(wx(p.x), 1.6 + (60 - p.t) * 0.02, wz(p.y)).project(camera);
+    el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+    el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+    el.style.opacity = Math.min(1, p.t / 20);
   }
-
-  document.getElementById('score').textContent = score;
-  document.getElementById('best').textContent = best;
-  document.getElementById('level').textContent = level;
-  document.getElementById('lives').textContent = lives;
 }
 
+// ---------------------------------------------------------------- input
 const KEYS = {arrowup: UP, w: UP, arrowdown: DOWN, s: DOWN, arrowleft: LEFT, a: LEFT, arrowright: RIGHT, d: RIGHT};
+function toggleCamera() {
+  camMode = camMode === 'follow' ? 'overview' : 'follow';
+  $('view').textContent = `Camera: ${camMode === 'follow' ? 'Follow' : 'Overview'}`;
+}
 document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (KEYS[k]) queued = KEYS[k];
   else if (k === 'enter' && (state === 'start' || state === 'over')) newGame();
   else if ((k === ' ' || k === 'p') && state === 'play') paused = !paused;
+  else if (k === 'c') toggleCamera();
   else return;
   e.preventDefault();
 });
+$('view').addEventListener('click', e => { e.stopPropagation(); toggleCamera(); $('view').blur(); });
 
 let touchStart = null;
+const canvas = renderer.domElement;
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   if (state === 'start' || state === 'over') { newGame(); return; }
@@ -439,17 +826,30 @@ canvas.addEventListener('touchmove', e => {
 }, {passive: false});
 canvas.addEventListener('click', () => { if (state === 'start' || state === 'over') newGame(); });
 
-let last = performance.now(), acc = 0;
-function loop(now) {
-  acc += Math.min(100, now - last);
-  last = now;
-  while (acc >= 1000 / 60) { step(); acc -= 1000 / 60; }
-  draw();
-  requestAnimationFrame(loop);
-}
+// ---------------------------------------------------------------- main loop
 loadDots();
 resetPositions();
-requestAnimationFrame(loop);
+const clock = new THREE.Clock();
+let acc = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.1, clock.getDelta());
+  acc += dt;
+  while (acc >= 1 / 60) { step(); acc -= 1 / 60; }
+  time += dt;
+  water.material.uniforms.time.value += dt * 0.55;
+  trimMat.emissive.set(state === 'clear' && Math.floor(timer / 12) % 2 ? 0xffffff : 0x2b5cff);
+  updatePearls();
+  updatePacView(dt);
+  updateGhosts(dt);
+  updateParticles();
+  updateCamera(dt);
+  updateOverlay();
+  updatePopups();
+  composer.render();
+}
+window.__started = true;
+animate();
 </script>
 </body>
 </html>
