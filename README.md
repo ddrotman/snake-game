@@ -8,9 +8,11 @@ Open `index.html` in a browser.
 
 | Key | Action |
 | --- | --- |
-| Arrow keys / WASD | Steer |
+| Arrow keys / WASD | Steer (when diving or surfing: ↑ forward, ← → turn) |
+| X / Shift (or 🤿 button) | Dive for 4 seconds: swim *under* the walls, and nothing can touch you |
+| F (or 🏄 button) | Catch a set wave as it reaches you and ride it over the maze |
 | B (or 🍺 button) | Drink a beer: you get faster and plow through crabs, but you're drunk. Your controls go reversed and random, and everyone else gets drunk too. |
-| J (or 🌿 button) | Smoke a joint: everything slows down (you a little, everyone else a lot), smoke fills the air, and your eyes go red and droopy |
+| J (or 🌿 button) | Smoke a joint: everything slows down (you a little, everyone else a lot), smoke fills the air, and your eyes go red and droopy. Your girlfriend will not be happy. |
 | Space / P | Pause |
 | C (or Camera button) | Switch between follow camera and overview |
 | Enter / tap | Start or restart |
@@ -26,6 +28,23 @@ Eat every pearl to clear the level. The big glowing pearls turn the stingrays bl
 
 Beers and joints float into the maze as pickups. Grab them and save them for when you need them.
 
+## Surfing and diving
+
+- **Surf:** when a set wave reaches you, hit F to catch it. You ride the crest south over the walls, carve left and right with the arrows, and grab every pearl you pass over. Stingrays can't reach you up there. You land safely at the bottom for a 200-point tube-ride bonus.
+- **Dive:** hit X to go under for 4 seconds. Underwater you can swim beneath the inner walls, past schools of fish, coral, and swaying seaweed. You come up at the nearest open water when your air runs out, and you have to wait 8 seconds before you can dive again.
+
+Both switch to a close camera right behind Pac-Man.
+
+## Chaos
+
+Every 25–35 seconds something crazy happens:
+
+- 🪩 **Disco party:** a disco ball drops, the walls go rainbow, everybody dances, and pearls are worth double.
+- 🐋 **Whale breach:** a whale jumps beside the maze and sets off a big wave (catch it!).
+- 🛸 **Alien abduction:** a UFO beams up the stingray closest to you.
+
+Dolphins jump around the maze and seagulls circle overhead.
+
 ## Travel
 
 Each level you clear flies you to the next surf spot, each with its own sky, water, and maze. The waves get bigger and come more often at each stop:
@@ -35,4 +54,4 @@ Each level you clear flies you to the next surf spot, each with its own sky, wat
 3. Uluwatu, Bali: sunset, on a sandy beach with palm trees
 4. Nazaré, Portugal: the big one
 
-Your girlfriend surfs behind you the whole way, in heart-shaped sunglasses and gold hoops.
+Your girlfriend surfs behind you the whole way, in heart-shaped sunglasses and gold hoops. Light up and she turns red, scowls, fumes, hangs back, and lets you hear about it until she forgives you.
