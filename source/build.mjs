@@ -1,5 +1,5 @@
-// Builds surf-n-chomp.html: the whole game, Three.js included, in one file that plays offline.
-// index.html stays the readable source (it loads Three.js from a CDN); run `npm run build` after editing it.
+// Builds ../surf-n-chomp.html: the whole game, Three.js included, in one file that plays offline.
+// index.html stays the readable source (it loads Three.js from a CDN); run `npm run build` in this folder after editing it.
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -29,5 +29,5 @@ rmSync(dir, {recursive: true});
 // Keep the bundle from closing the <script> tag early.
 const code = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const out = html.slice(0, moduleStart).replace(importMap, '') + `<script>\n${code}</script>` + html.slice(moduleEnd + '</script>'.length);
-writeFileSync('surf-n-chomp.html', out);
-console.log(`surf-n-chomp.html: ${(out.length / 1024).toFixed(0)} KB`);
+writeFileSync('../surf-n-chomp.html', out);
+console.log(`../surf-n-chomp.html: ${(out.length / 1024).toFixed(0)} KB`);

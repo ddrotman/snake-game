@@ -8,16 +8,17 @@ A surf, snack & survive adventure: Pac-Man and his girlfriend surf through stone
 
 To grab it from GitHub, open `surf-n-chomp.html` in the repo and click the **Download raw file** button.
 
-`index.html` is the readable source. It loads Three.js from a CDN, so it needs an internet connection. After editing it, rebuild the shareable file:
+You only ever need that one file. The `source/` folder is just for changing the game later: it holds the readable code (`source/index.html`) and the script that packs it into `surf-n-chomp.html`. To rebuild after an edit:
 
 ```bash
+cd source
 npm install
 npm run build
 ```
 
 ## Play
 
-Open `surf-n-chomp.html` (or `index.html`) in a browser and hit **Paddle out**.
+Open `surf-n-chomp.html` in a browser and hit **Paddle out**.
 
 | Key | Action |
 | --- | --- |
